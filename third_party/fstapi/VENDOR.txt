@@ -1,0 +1,5 @@
+Vendored from https://github.com/gtkwave/libfst
+Revision: 74301348450701727776c1a0522a3f512738e9ae (the revision pinned by GTKWave)
+Licence: MIT (see LICENSE). Do not edit except for build fixes; record any change here.
+
+Local changes: none

@@ -1,0 +1,48 @@
+name: Feature request
+description: Suggest a new feature or a command that is missing.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        lvdsim aims at a familiar command set (names and option syntax) on top of the NVC simulator. Features
+        that depend on what the simulator kernel can do may need a change in NVC itself.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the task or workflow, not only the feature.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like lvdsim to do?
+      description: For a command, give the name and options you expect and an example of its use.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What do you do today instead?
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - GUI
+        - Waveform viewer
+        - Command line tools
+        - Tcl commands
+        - Libraries and packaging
+        - Kernel (NVC fork)
+        - Other
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checks
+      options:
+        - label: I looked at the existing issues and the documentation first.
+          required: true
+        - label: I am not asking to copy code, documentation or scripts of another product; I describe the behaviour I need.
+          required: true

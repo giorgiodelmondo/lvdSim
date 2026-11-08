@@ -1,0 +1,10 @@
+# TODO (maintainer): replace OWNER/REPO in the two URLs below with the real repository path (contact_links need absolute URLs).
+# Blank issues are off: the two forms ask for the information a report needs. Open a form instead.
+blank_issues_enabled: false
+contact_links:
+  - name: Question about using lvdsim
+    url: https://github.com/OWNER/REPO/blob/main/docs/tutorial.md
+    about: The tutorial walks through a first simulation. Libraries (Xilinx and Intel simulation libraries, vendor models) are covered in docs/libraries.md.
+  - name: Security vulnerability
+    url: https://github.com/OWNER/REPO/security/advisories/new
+    about: Report security problems privately, not in a public issue. See SECURITY.md.

@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# lvd_target_warnings(<target>) applies the project warning set to lvdsim code only.
+function(lvd_target_warnings target)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4)
+        if(LVDSIM_WARNINGS_AS_ERRORS)
+            target_compile_options(${target} PRIVATE /WX)
+        endif()
+    else()
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+        if(LVDSIM_WARNINGS_AS_ERRORS)
+            target_compile_options(${target} PRIVATE -Werror)
+        endif()
+    endif()
+endfunction()

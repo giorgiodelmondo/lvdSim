@@ -1,0 +1,92 @@
+name: Bug report
+description: Something does not work as documented, crashes, or gives a wrong result.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. A minimal HDL example that shows the problem is the most useful thing you can attach.
+        For a security problem use the private route in SECURITY.md instead of this form.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - GUI (windows, waveform, docks)
+        - Waveform rendering
+        - Command line tools (vlib, vmap, vcom, vlog, vsim)
+        - Library compile helper (vendor libraries)
+        - Tcl commands in the shell
+        - VHDL simulation
+        - Verilog or mixed-language simulation
+        - Packaging or installer
+        - Build from source
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows 11
+        - Windows 10
+        - Linux (Debian or Ubuntu)
+        - Linux (other, name it below)
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: lvdsim version and package type
+      description: Version from the window title or `vsim -version`, and how you installed it (Windows installer or zip, Linux .run installer, built from source with a commit id).
+      placeholder: "0.1.0, Windows zip"
+    validations:
+      required: true
+  - type: input
+    id: renderer
+    attributes:
+      label: Waveform renderer
+      description: Shown in the status bar and under the View menu (GPU or QPainter). Needed for drawing problems; write "n/a" otherwise.
+      placeholder: "QPainter (GPU not available: ...)"
+  - type: input
+    id: nvc
+    attributes:
+      label: NVC version
+      description: Output of `nvc --version` for the nvc that lvdsim runs (the one in the package, or the one set with LVDSIM_NVC).
+      placeholder: "nvc 1.24-devel (...)"
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: Minimal HDL example
+      description: The smallest design and the exact commands (or .do script) that reproduce the problem. Paste text, not screenshots of code.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What happened instead. For a crash, say what you did just before.
+    validations:
+      required: true
+  - type: textarea
+    id: transcript
+    attributes:
+      label: Transcript
+      description: Text of the Transcript window or of the command line output (copy and paste, not a picture). Remove anything private.
+      render: text
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots of drawing problems are welcome here.

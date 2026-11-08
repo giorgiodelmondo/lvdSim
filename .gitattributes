@@ -1,0 +1,26 @@
+# Normalise line endings. Sources and scripts are LF in the repository and in working trees.
+* text=auto eol=lf
+
+# Scripts that Windows tools read must be CRLF in the working tree.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.iss text eol=crlf
+
+# Shell scripts must never get CRLF (they fail with "bad interpreter").
+*.sh text eol=lf
+
+# Pull request patches are applied byte for byte: never convert them (a CRLF inside a hunk breaks the apply).
+kernel/upstream/** -text
+
+# Binary files.
+*.png binary
+*.jpg binary
+*.ico binary
+*.pdf binary
+*.dll binary
+*.exe binary
+*.zip binary
+*.gz binary
+*.xz binary
+*.fst binary

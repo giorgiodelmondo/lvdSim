@@ -1,0 +1,15 @@
+Qt notice
+=========
+
+lvdsim-gui uses the Qt toolkit (version 6.11.1; modules Qt Core, Qt Gui, Qt Widgets, and the platform and image
+plugins deployed by windeployqt). Qt is licensed under the GNU Lesser General Public License, version 3
+(LGPL-3.0); the text is in Qt-LGPL-3.0.txt (it supplements the GPL-3.0 text in lvdsim-GPL-3.0.txt). Copyright
+The Qt Company Ltd. and other contributors. See https://www.qt.io/licensing/.
+
+Qt is linked DYNAMICALLY: the Qt libraries are the unmodified Qt DLLs (Qt6Core.dll, Qt6Gui.dll, Qt6Widgets.dll and
+the plugins in the platforms, styles, imageformats, ... directories) next to lvdsim-gui.exe. They were not
+changed, and you may replace them with your own build of Qt 6.11 of the same binary interface (MinGW 13.1,
+x86_64, same minor version). No Qt Charts, Qt DataVisualization or Qt Quick module is used or shipped.
+
+The corresponding Qt source code is available from https://download.qt.io/official_releases/qt/6.11/ and
+https://code.qt.io/. The lvdsim source (GPL-3.0-or-later) is the complete source of the lvdsim programs.

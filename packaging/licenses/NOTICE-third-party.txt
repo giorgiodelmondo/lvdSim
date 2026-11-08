@@ -1,0 +1,22 @@
+Third party components shipped in this package
+==============================================
+
+lvdsim programs (lvdsim-gui, lvdsim-cli, vlib, vmap, vcom, vlog, vsim)
+    GPL-3.0-or-later. Text: lvdsim-GPL-3.0.txt
+nvc\bin\nvc.exe and nvc\lib\*   (NVC VHDL compiler and simulator, built from the lvdsim fork branch)
+    GPL-3.0-or-later, Copyright Nick Gasson and contributors. Text: NVC-GPL-3.0.txt. Source: https://github.com/nickg/nvc
+    and the branch lvdsim of https://github.com/giorgiodelmondo/nvc (the commit is in build-info.txt). nvc runs as a separate program; the lvdsim programs
+    never link it and talk to it through its command line, standard input/output and waveform files.
+fstapi (statically linked into the lvdsim programs)
+    MIT, Copyright Tony Bybell. Text: fstapi-MIT.txt. fstapi bundles LZ4 (BSD 2-Clause, Copyright Yann Collet)
+    and FastLZ (MIT, Copyright Ariya Hidayat); their notices are in the headers of the source files lz4.c and fastlz.c.
+zlib (statically linked into the lvdsim programs)
+    zlib licence, Copyright Jean-loup Gailly and Mark Adler. Text: third-party\zlib
+Qt 6.11.1 (dynamic libraries)
+    LGPL-3.0. See NOTICE-Qt.txt and Qt-LGPL-3.0.txt.
+Windows package only: MinGW-w64 runtime (libstdc++-6.dll, libgcc_s_seh-1.dll, libwinpthread-1.dll)
+    GPL-3.0 with the GCC Runtime Library Exception, and the winpthreads (MIT/BSD style) licence.
+Windows package only: DLLs used by nvc (all from MSYS2 mingw64): LLVM (Apache-2.0 with LLVM exceptions), Tcl 8.6 (Tcl/Tk licence, BSD
+    style), libffi (MIT), GNU readline (GPL-3.0), zstd (BSD), zlib, expat, libxml2, ncurses, libiconv, termcap and
+    the GCC runtime. Their licence files, as installed by MSYS2, are in third-party\ where MSYS2 provides them.
+Linux package: nvc and lvdsim-gui use the system Tcl, LLVM, libffi, zstd, readline and Qt libraries of the distribution.
