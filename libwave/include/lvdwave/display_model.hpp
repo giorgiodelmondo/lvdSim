@@ -25,12 +25,33 @@ enum class Interpolation : std::uint8_t { Step, Linear };
 struct AnalogSettings {
     bool enabled = false;
     bool autoRange = true;
-    double min = 0.0;  ///< Used when autoRange is false.
+    double min = 0.0; ///< Used when autoRange is false.
     double max = 1.0;
     Interpolation interpolation = Interpolation::Step;
-    int heightRows = 4;  ///< Height in multiples of a normal row.
+    int heightRows = 4; ///< Height in multiples of a normal row.
     bool isSigned = false;
 };
+
+/// The value interval an analog row maps onto its height (min at the bottom edge, max at the top edge).
+struct AnalogRange {
+    double min = 0.0;
+    double max = 1.0;
+};
+
+/// Why a manual range is refused ("" when it is usable): both values must be finite and min < max.
+std::string analogRangeError(double min, double max);
+
+/// The range an analog row is drawn with. Manual: the settings' min and max. Auto: the extent of the data
+/// (`dataRange`: the minimum and maximum of every value of the signal; without data there is no range). An
+/// empty or reversed range (one constant value, or a bad manual range) is widened to [v - 0.5, v + 0.5]
+/// around its lower edge. It never depends on the zoom or the time window, so a row has one range for all of
+/// its tiles.
+std::optional<AnalogRange> resolveAnalogRange(const AnalogSettings& settings,
+                                              std::optional<AnalogRange> dataRange);
+
+/// Where `value` falls on a row of the range: 0 at min, 1 at max, clamped, so values outside the range are
+/// drawn on the nearest edge of the row. NaN gives 0.
+double analogFraction(const AnalogRange& range, double value) noexcept;
 
 /// One member of a virtual bus: a whole signal, or a single bit of it (bit counted from the least
 /// significant end, -1 for the whole signal).
@@ -39,25 +60,29 @@ struct BusMember {
     int bit = -1;
 
     BusMember() = default;
-    BusMember(std::string p, int b = -1) : path(std::move(p)), bit(b) {}  // NOLINT: implicit by design
-    BusMember(const char* p, int b = -1) : path(p), bit(b) {}              // NOLINT: implicit by design
+    BusMember(std::string p, int b = -1)
+        : path(std::move(p))
+        , bit(b) {} // NOLINT: implicit by design
+    BusMember(const char* p, int b = -1)
+        : path(p)
+        , bit(b) {} // NOLINT: implicit by design
     bool operator==(const BusMember& o) const { return path == o.path && bit == o.bit; }
 };
 
 /// One entry of the wave window. Signals are referenced by hierarchical path, not id, so a saved
 /// layout survives reloading a different run of the same design.
 struct DisplayItem {
-    ItemId id = nextItemId();          ///< Stable identity, see ItemId.
+    ItemId id = nextItemId(); ///< Stable identity, see ItemId.
     ItemKind kind = ItemKind::Signal;
-    std::string label;                 ///< Display name; empty means use the path.
-    std::string path;                  ///< Signal items.
-    std::vector<BusMember> members;    ///< VirtualBus items: members, most significant first.
+    std::string label;              ///< Display name; empty means use the path.
+    std::string path;               ///< Signal items.
+    std::vector<BusMember> members; ///< VirtualBus items: members, most significant first.
     Radix radix = Radix::Default;
     AnalogSettings analog;
-    bool expanded = true;              ///< Group items.
-    bool showBits = false;             ///< Signal items wider than one bit: show one row per bit.
-    std::optional<std::uint32_t> color;  ///< 0xRRGGBB trace colour override.
-    std::vector<DisplayItem> children; ///< Group items.
+    bool expanded = true;               ///< Group items.
+    bool showBits = false;              ///< Signal items wider than one bit: show one row per bit.
+    std::optional<std::uint32_t> color; ///< 0xRRGGBB trace colour override.
+    std::vector<DisplayItem> children;  ///< Group items.
 
     std::string displayName() const;
 };
@@ -92,7 +117,6 @@ private:
     DisplayItem root_;
 };
 
-
 /// Editing operations on a DisplayModel. Items are identified by pointer; every operation that
 /// changes the tree invalidates all DisplayItem pointers obtained earlier.
 
@@ -122,4 +146,4 @@ void insertAfter(DisplayModel& model, const DisplayItem* after, DisplayItem item
 /// O(sum of member widths + members * log changes).
 std::string busValueAt(const WaveStore& store, const std::vector<BusMember>& members, Time t);
 
-}  // namespace lvd::wave
+} // namespace lvd::wave

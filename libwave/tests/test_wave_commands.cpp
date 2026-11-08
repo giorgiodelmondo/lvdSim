@@ -489,3 +489,40 @@ TEST_CASE("add wave -group NAME without signals declares an empty group") {
     REQUIRE_FALSE(parseAddWave({}).ok());
     REQUIRE_FALSE(parseAddWave({"-radix", "hex"}).ok());
 }
+
+TEST_CASE("add wave -min/-max: a manual analog range needs a valid pair, otherwise the range stays automatic") {
+    WaveStore st;
+    const ScopeId top = st.addScope(kRootScope, "dut");
+    st.addSignal(top, "v", SignalKind::Real, 64);
+    auto run = [&](std::initializer_list<std::string> args) {
+        DisplayModel m;
+        REQUIRE(applyAddWave(m, st, parseAddWave(std::vector<std::string>(args)).value()) == 1);
+        return m.root().children.back().analog;
+    };
+    AnalogSettings a = run({"-format", "analog", "-min", "-2.5e-3", "-max", "4E2", "/dut/v"});
+    REQUIRE_FALSE(a.autoRange);
+    REQUIRE(a.min == -2.5e-3);
+    REQUIRE(a.max == 400.0);
+    a = run({"-format", "analog", "-min", "5", "-max", "5", "/dut/v"});  // empty range
+    REQUIRE(a.enabled);
+    REQUIRE(a.autoRange);
+    a = run({"-format", "analog", "-min", "9", "/dut/v"});  // only Min, above the default Max of 1
+    REQUIRE(a.autoRange);
+    a = run({"-format", "analog", "/dut/v"});
+    REQUIRE(a.autoRange);
+
+    // export writes -min/-max in a form that imports to the same numbers
+    DisplayModel m;
+    DisplayItem it = DisplayModel::makeSignal("dut.v");
+    it.analog.enabled = true;
+    it.analog.autoRange = false;
+    it.analog.min = -1e-12;
+    it.analog.max = 2.5e9;
+    m.root().children.push_back(it);
+    const std::string script = exportDoScript(m);
+    DisplayModel back;
+    REQUIRE(importDoScript(script, back, st).rowsAdded == 1);
+    REQUIRE_FALSE(back.root().children[0].analog.autoRange);
+    REQUIRE(back.root().children[0].analog.min == -1e-12);
+    REQUIRE(back.root().children[0].analog.max == 2.5e9);
+}

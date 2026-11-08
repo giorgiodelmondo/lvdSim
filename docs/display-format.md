@@ -114,6 +114,23 @@ everything, nesting included.
 editor) and `drag N,N TARGET FRACTION` (holds a drag over a row so the drop indicator is visible).
 `--wave-context-menu NAME` also pops up the context menu on a row. Row names are the names the wave window shows.
 
+### Analog range
+
+`analog=auto` (default) or `analog=MIN:MAX` on `signal` and `bus` lines; in the `.do` export `-min V -max V` of `add wave`. Values are
+written with 17 significant digits and read back exactly; scientific notation (`2e-3`) is accepted everywhere. A manual range needs
+`MIN < MAX` and both finite: the dialog refuses anything else, `add wave -min/-max` keeps the automatic range when only one limit is
+given or the pair is not valid, and the drawing widens an invalid stored range to `[v - 0.5, v + 0.5]` instead of dividing by zero.
+`lvd::wave::resolveAnalogRange` is the one place that decides the range, `analogFraction` clamps a value onto the row (values outside
+are drawn on the top or bottom edge). Auto range is the minimum and maximum of every value of the signal (`NumericIndex::range`), so
+it does not depend on the tile or the view; the row revision (part of the tile cache key) contains the mode and both limits, so a
+change redraws the QPainter tiles and the GPU atlas entries.
+
+### Scroll bars and Follow (GUI)
+
+The horizontal bar maps `[store start, store end]` onto 2^30 steps (thumb = the visible window); `WaveWidget::setFollow(true)` keeps the
+right edge at the end of the data with the current width (see the class comment of `WaveWidget` for the exact rules). `--wave-op`
+adds `follow on|off`, `zoom FACTOR`, `scroll-time FRACTION` and `analog-range NAME[,NAME] auto|MIN MAX`.
+
 ## Drawing rules of the wave area
 
 - **End of data.** Rows draw nothing for times after the end of the recorded data: the simulation time the store has reached

@@ -109,7 +109,7 @@ without `quit` ends the session (other simulators stay at their prompt).
 | `quit [-f] [-force] [-sim] [-code n]` | wrapped | `exit -code n` |
 | `do file` | wrapped | `source`, with `argv` set |
 | `quietly cmd` | wrapped | |
-| `add wave [-r] [-radix r] [-color c] [-label l] [-group g] [-divider t] [-format analog] [-min x] [-max y] pattern...` | wrapped | in the GUI it fills the wave window (patterns like `/dut/*`, `/tb/dut/clk`; a vector named `count[7:0]` matches `count`); no effect in batch mode; lvdsim extensions: `-group a/b` nests (one level per `/`), `-group g` alone declares an empty group, `-collapse`, `-bits`, `-vbus`, see display-format.md |
+| `add wave [-r] [-radix r] [-color c] [-label l] [-group g] [-divider t] [-format analog] [-min x] [-max y] pattern...` | wrapped | in the GUI it fills the wave window (patterns like `/dut/*`, `/tb/dut/clk`; a vector named `count[7:0]` matches `count`); no effect in batch mode; lvdsim extensions: `-group a/b` nests (one level per `/`), `-group g` alone declares an empty group, `-collapse`, `-bits`, `-vbus`, see display-format.md; `-min`/`-max` need both limits with min < max (else the range stays automatic), the same range is edited by the wave window's "Analog Settings..." dialog |
 | `delete wave *` | wrapped | GUI: removes all rows; batch: no effect |
 | `add list`, `add log`, `log`, `wave`, `view`, `radix`, `configure`, `transcript` | accepted | no effect |
 | `onerror`, `onbreak`, `onElabError` | accepted | no effect yet |

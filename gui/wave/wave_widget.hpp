@@ -28,6 +28,7 @@ class QLineEdit;
 class QMenu;
 class QScrollBar;
 class QTimer;
+class QDialog;
 
 namespace lvd::gui {
 
@@ -93,8 +94,34 @@ public:
 
     const ViewState& view() const noexcept { return view_; }
     void setView(double startTime, double timePerPixel);
-    void zoomFull();
-    void zoomBy(double factor);  ///< >1 zooms in around the centre of the wave area
+    void zoomFull();  ///< fits the whole run; a manual action, so it turns Follow off
+    void zoomBy(double factor);  ///< >1 zooms in around the centre of the wave area (the end while following)
+
+    // ---- Scroll bars -------------------------------------------------------------------------------
+    /// Horizontal bar (time): its range is the whole run known to the store, [start, end], in kHBarSteps steps;
+    /// the thumb is the visible window and fills the bar when the view shows everything. It grows with live data.
+    /// Moving it by the user pans the view and turns Follow off; every other view change moves the thumb without
+    /// feeding back.
+    QScrollBar* horizontalScrollBar() const noexcept { return hbar_; }
+    /// Vertical bar (rows): pixel units, range = rows height - visible height. It drives the name, value and wave
+    /// columns together because they are one widget painted with one scroll offset.
+    QScrollBar* verticalScrollBar() const noexcept { return vbar_; }
+    static constexpr int kHBarSteps = 1 << 30;
+    int scrollY() const noexcept { return scrollY_; }
+    int contentHeight() const;  ///< sum of the row heights
+    int rowsBottom() const;              ///< y below the last visible pixel of the rows (above the horizontal bar)
+
+    // ---- Follow (stay at the end of a growing run, like tail -f) ----------------------------------
+    /// While on, the right edge of the view is the end of the recorded data, with the current zoom width, every
+    /// time dataChanged() reports more data. Turned on: the view jumps to the end at once. (Follow set before any
+    /// data exists, from the saved setting, and no zoom chosen yet: the view keeps fitting the whole run, which
+    /// ends at the end of the data too, until the first zoom fixes a width.) Turned off by anything
+    /// that moves the window by hand: the horizontal bar, drag (middle button) or wheel panning, Ctrl+Left/Right,
+    /// Home/End, go to a time, the view moving to show a cursor, zoom to fit and setView(). Zooming (wheel, +/-,
+    /// toolbar) keeps it on and keeps the right edge pinned instead of the point under the pointer. Changing the
+    /// window width keeps the right edge pinned too.
+    bool follow() const noexcept { return follow_; }
+    void setFollow(bool on);
 
     // ---- Live data (a simulation that is still running) -----------------------------------------
     /// Call after a live source appended to the store: refreshes the rows and the view. Until the user
@@ -235,13 +262,30 @@ public:
     bool commitRename();
     void cancelRename();
 
+    // ---- Analog settings -----------------------------------------------------------------------
+    /// True if at least one selected row is an analog trace (what "Analog Settings..." applies to).
+    bool analogSelectionAvailable() const;
+    /// The range an analog row is drawn with (auto: the extent of the whole signal), empty if the row is not an
+    /// analog trace or has no data yet.
+    std::optional<lvd::wave::AnalogRange> effectiveAnalogRange(int row) const;
+    /// Sets the range of every selected analog trace: automatic, or manual limits (refused when min >= max or not
+    /// finite). One undo step. Returns false and sets lastEditError() when nothing was changed.
+    bool setAnalogRangeForSelection(bool autoRange, double min = 0.0, double max = 1.0);
+    /// Opens the modal "Analog Settings" dialog for the selection, preloaded from the clicked row (or the first
+    /// selected analog row), and applies it on OK. Returns true if the settings were applied.
+    bool showAnalogSettings(int row = -1);
+    /// What shows the dialog; replaced by tests (fill the fields and call accept() instead of exec()). The default
+    /// is `dialog.exec() == QDialog::Accepted`.
+    using DialogRunner = std::function<bool(QDialog& dialog)>;
+    void setAnalogDialogRunner(DialogRunner runner) { analogRunner_ = std::move(runner); }
+
     /// The context menu for a click on `row` (-1: not on a row), built from the current selection. The caller
     /// owns it. Actions have object names (moveUp, moveDown, moveTop, moveBottom, moveToGroupMenu,
     /// moveToTopLevel, moveToNewGroup, moveToGroup_<id>, groupSelected, ungroup, rename, insertDividerAbove,
     /// insertDividerBelow, delete, undo, redo, ...).
     QMenu* createContextMenu(int row);
     /// Adds the arranging actions (move, group, rename, divider, delete, undo and redo) for the current selection.
-    void populateArrangeMenu(QMenu* menu);
+    void populateArrangeMenu(QMenu* menu, bool withAnalogSettings = true);
     /// Replaces the dialog that asks for a group name; for tests. Returns the text or nothing if cancelled.
     using TextPrompt = std::function<std::optional<QString>(const QString& title, const QString& label, const QString& initial)>;
     void setTextPrompt(TextPrompt prompt) { prompt_ = std::move(prompt); }
@@ -308,6 +352,8 @@ signals:
     /// An edit was refused (message for the status bar or transcript).
     void editRejected(const QString& message);
     void undoStateChanged();
+    /// Follow was switched on or off (by setFollow or by a manual pan).
+    void followChanged(bool on);
 
 protected:
     void paintEvent(QPaintEvent*) override;
@@ -373,6 +419,12 @@ private:
     bool isSelected(const Row& row) const;
     std::vector<lvd::wave::DisplayItem*> selectedItems() const;  ///< whole items only, no per-bit rows
     void updateScrollBar();
+    void updateHBar();      ///< range, page and value of the horizontal bar from the view and the store
+    void layoutBars();      ///< geometry of both bars
+    void hbarMoved(int value);
+    void pinToEnd();        ///< Follow: the right edge of the view at the end of the data
+    void viewPannedByUser();  ///< a manual horizontal move: leaves auto fit and Follow
+    void fitAll();
     void clampView();
     void drawRuler(QPainter& p) const;
     void drawRow(QPainter& p, int rowIndex, int top);
@@ -441,6 +493,10 @@ private:
     int valueWidth_ = 110;
     int scrollY_ = 0;
     QScrollBar* vbar_ = nullptr;
+    QScrollBar* hbar_ = nullptr;
+    bool hbarSync_ = false;  ///< the bar is being set from the view: ignore its valueChanged
+    bool follow_ = false;
+    DialogRunner analogRunner_;
 
     enum class Drag { None, Cursor, Pan, NameSplitter, ValueSplitter, Rows } drag_ = Drag::None;
     int dragCursor_ = 0;

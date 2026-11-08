@@ -362,9 +362,13 @@ std::size_t applyAddWave(DisplayModel& model, const WaveStore& store, const AddW
         if (req.analog) {
             it.analog.enabled = true;
             if (req.min || req.max) {
-                it.analog.autoRange = false;
-                it.analog.min = req.min.value_or(0.0);
-                it.analog.max = req.max.value_or(1.0);
+                // A manual range needs both limits and Min < Max; anything else keeps the automatic range.
+                const double lo = req.min.value_or(0.0), hi = req.max.value_or(1.0);
+                if (analogRangeError(lo, hi).empty()) {
+                    it.analog.autoRange = false;
+                    it.analog.min = lo;
+                    it.analog.max = hi;
+                }
             }
             if (req.heightRows > 0)
                 it.analog.heightRows = req.heightRows;

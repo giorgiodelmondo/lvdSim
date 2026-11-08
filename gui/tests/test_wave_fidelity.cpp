@@ -352,7 +352,7 @@ private slots:
             qInfo() << "no headless GPU:" << err;
             return;
         }
-        const QSize size(w->waveWidth(), w->height() - w->rowsTop());
+        const QSize size(w->waveWidth(), w->rowsBottom() - w->rowsTop());
         gpu->renderer().clearCache();
         const QImage g =
             gpu->render(w->buildGpuFrame(size)).convertToFormat(QImage::Format_ARGB32_Premultiplied);

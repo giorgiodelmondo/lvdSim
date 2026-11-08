@@ -124,7 +124,7 @@ int main(int argc, char** argv) {
         return 0;
     }
     std::printf("GPU backend: %s\n", qPrintable(gpu->backendName()));
-    const QSize waveSize(w.width() - w.waveLeft(), w.height() - 40);
+    const QSize waveSize(w.width() - w.waveLeft(), w.rowsBottom() - 40);
     auto gframe = [&] {
         QElapsedTimer ft;
         ft.start();

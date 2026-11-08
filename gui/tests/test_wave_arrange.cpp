@@ -685,7 +685,7 @@ private slots:
         QCOMPARE(w->autoScrollStep(), 0); // no drag, no scrolling
         QTest::mousePress(w.get(), Qt::LeftButton, {}, from);
         QTest::mouseMove(w.get(), from + QPoint(0, 12));
-        QTest::mouseMove(w.get(), QPoint(60, w->height() - 4)); // near the bottom edge
+        QTest::mouseMove(w.get(), QPoint(60, w->rowsBottom() - 4)); // near the bottom edge
         QVERIFY(w->rowDragActive());
         const int step = w->autoScrollStep();
         QVERIFY(step > 0);
@@ -693,7 +693,7 @@ private slots:
         w->autoScrollStep();
         QVERIFY(bar->value() > step);
         // the drop target follows the content that scrolled under the pointer
-        w->updateRowDrag(QPoint(60, w->height() - 4));
+        w->updateRowDrag(QPoint(60, w->rowsBottom() - 4));
         QVERIFY(w->rowDropIndicator().row > 3);
         // timer driven scrolling as well
         const int before = bar->value();
@@ -736,14 +736,14 @@ private slots:
         w->show();
         QVERIFY(QTest::qWaitForWindowExposed(w.get()));
         QScrollBar* bar = w->findChild<QScrollBar*>();
-        const int visibleRows = (w->height() - w->rowsTop()) / w->rowHeight();
+        const int visibleRows = (w->rowsBottom() - w->rowsTop()) / w->rowHeight();
         w->selectRow(2);
         w->moveSelectedRowsToEdge(false); // to the bottom of 60 rows
         QVERIFY(bar->value() > 0);
         const int row = w->rowOfItem(w->selectedItemIds().front());
         QCOMPARE(row, 59);
         QVERIFY(w->rowTop(row) >= w->rowsTop());
-        QVERIFY(w->rowTop(row) + w->rowHeight() <= w->height());
+        QVERIFY(w->rowTop(row) + w->rowHeight() <= w->rowsBottom());
         w->moveSelectedRowsToEdge(true);
         QCOMPARE(bar->value(), 0);
         QVERIFY(visibleRows < 59);
@@ -755,7 +755,7 @@ private slots:
         const int r2 = w->rowOfItem(w->selectedItemIds().front());
         QCOMPARE(r2, 15);
         QVERIFY(w->rowTop(r2) >= w->rowsTop());
-        QVERIFY(w->rowTop(r2) + w->rowHeight() <= w->height());
+        QVERIFY(w->rowTop(r2) + w->rowHeight() <= w->rowsBottom());
     }
 
     void valuesAndCursorsFollowTheMovedRow() {
@@ -811,7 +811,7 @@ private slots:
         auto w = make();
         w->setView(0.0, 1.0);
         w->grab(); // fill the tile cache
-        const QSize size(w->waveWidth(), w->height() - w->rowsTop());
+        const QSize size(w->waveWidth(), w->rowsBottom() - w->rowsTop());
         const GpuFrame before = w->buildGpuFrame(size);
 
         // key of every row by y
@@ -851,7 +851,7 @@ private slots:
     void movingRowsKeepsTheCacheKeyOfEveryRow() {
         auto w = make();
         w->setView(0.0, 1.0);
-        const QSize size(w->waveWidth(), w->height() - w->rowsTop());
+        const QSize size(w->waveWidth(), w->rowsBottom() - w->rowsTop());
         // identity of a row: label -> key.row, taken from the frame via the row order
         auto keysByLabel = [&](WaveWidget& v) {
             QMap<QString, const void*> m;
@@ -895,7 +895,7 @@ private slots:
         m.root().children.push_back(std::move(an));
         auto w = make(std::move(m), 400);
         w->setView(0.0, 1.0);
-        const QSize size(w->waveWidth(), w->height() - w->rowsTop());
+        const QSize size(w->waveWidth(), w->rowsBottom() - w->rowsTop());
         auto layout = [&] {
             QMap<int, int> heightAtY;
             const GpuFrame f = w->buildGpuFrame(size);
@@ -925,7 +925,7 @@ private slots:
             QVERIFY(w->moveSelectedRows(-2));
             QCOMPARE(names(*w), (QStringList{"Clocks", "a", "b", "d", "c", "div", "e"}));
             QVERIFY(!w->snapshot().isNull());
-            const QSize size(w->waveWidth(), w->height() - w->rowsTop());
+            const QSize size(w->waveWidth(), w->rowsBottom() - w->rowsTop());
             const GpuFrame f = w->buildGpuFrame(size);
             QVERIFY(!f.tiles.empty());
         }

@@ -124,7 +124,7 @@ private slots:
         w.setDisplayModel(m);
         w.setStore(makeStore());
         w.setView(0.0, 1.5);
-        const QSize size(w.waveWidth(), w.height() - w.rowsTop());
+        const QSize size(w.waveWidth(), w.rowsBottom() - w.rowsTop());
         gpu->renderer().clearCache();
         const QImage g = gpu->render(w.buildGpuFrame(size)).convertToFormat(QImage::Format_ARGB32_Premultiplied);
         const QImage c = w.grab().toImage().convertToFormat(QImage::Format_ARGB32_Premultiplied);

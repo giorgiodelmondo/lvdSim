@@ -87,7 +87,7 @@ void WaveWidget::ensureRowVisible(int row) {
     if (row < 0 || row >= rowCount())
         return;
     const Row& r = rows_[static_cast<std::size_t>(row)];
-    const int page = std::max(1, height() - kRowsTop);
+    const int page = std::max(1, rowsBottom() - kRowsTop);
     if (r.y < scrollY_)
         vbar_->setValue(r.y);
     else if (r.y + r.h > scrollY_ + page)
@@ -375,7 +375,7 @@ void WaveWidget::positionEditor() {
     const int x = 6 + r.depth * 14 + (r.item->kind == ItemKind::Divider ? 0 : 14) - 2;
     editorBusy_ = true;
     editor_->setGeometry(x, top, std::max(60, nameWidth_ - x - 3), kRowHeight - 1);
-    const bool visible = top >= kRowsTop && top + kRowHeight <= height();
+    const bool visible = top >= kRowsTop && top + kRowHeight <= rowsBottom();
     if (editor_->isHidden() == visible)
         editor_->setVisible(visible);
     editorBusy_ = false;
@@ -499,7 +499,7 @@ void WaveWidget::addGroupTargets(QMenu* sub, const std::vector<ItemId>& ids) {
     walk(model_.root(), {});
 }
 
-void WaveWidget::populateArrangeMenu(QMenu* menu) {
+void WaveWidget::populateArrangeMenu(QMenu* menu, bool withAnalogSettings) {
     const std::vector<ItemId> ids = selectedItemIds();
     const bool any = !ids.empty();
     bool anyGroup = false;
@@ -563,6 +563,12 @@ void WaveWidget::populateArrangeMenu(QMenu* menu) {
         tr("Undo the last change to the rows"), canUndo(), [this] { undo(); });
     add("redo", rt.isEmpty() ? tr("Redo\tCtrl+Y") : tr("Redo %1\tCtrl+Y").arg(rt),
         tr("Redo the change that was undone"), canRedo(), [this] { redo(); });
+
+    if (withAnalogSettings) {
+        menu->addSeparator();
+        add("analogSettings", tr("Analog Settings..."), tr("Auto or manual (Min, Max) range of the selected analog traces"),
+            analogSelectionAvailable(), [this] { showAnalogSettings(); });
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -571,7 +577,7 @@ void WaveWidget::populateArrangeMenu(QMenu* menu) {
 WaveWidget::RowDropTarget WaveWidget::dropTargetAt(const QPoint& pos) const {
     RowDropTarget t;
     const std::vector<ItemId> dragged = drag_ == Drag::Rows ? dragIds_ : selectedItemIds();
-    if (pos.x() < 0 || pos.x() >= nameWidth_ || pos.y() < kRowsTop || pos.y() >= height()) {
+    if (pos.x() < 0 || pos.x() >= nameWidth_ || pos.y() < kRowsTop || pos.y() >= rowsBottom()) {
         t.outside = true;
         t.reason = tr("Drop the rows on the name column");
         return t;
@@ -714,8 +720,8 @@ int WaveWidget::autoScrollStep() {
     int dy = 0;
     if (p.y() < kRowsTop + kZone)
         dy = -std::clamp((kRowsTop + kZone - p.y()) / 2 + 2, 2, 30);
-    else if (p.y() > height() - kZone)
-        dy = std::clamp((p.y() - (height() - kZone)) / 2 + 2, 2, 30);
+    else if (p.y() > rowsBottom() - kZone)
+        dy = std::clamp((p.y() - (rowsBottom() - kZone)) / 2 + 2, 2, 30);
     if (dy == 0)
         return 0;
     const int before = vbar_->value();
@@ -729,7 +735,7 @@ void WaveWidget::drawDropIndicator(QPainter& p) const {
         return;
     const QColor accent(0x4a, 0xa8, 0xff);
     p.save();
-    p.setClipRect(QRect(0, kRowsTop, waveLeft(), std::max(0, height() - kRowsTop)));
+    p.setClipRect(QRect(0, kRowsTop, waveLeft(), std::max(0, rowsBottom() - kRowsTop)));
     if (t.intoGroup && t.row >= 0 && t.row < rowCount()) {
         const int top = rowTop(t.row);
         const int h = rows_[static_cast<std::size_t>(t.row)].h;

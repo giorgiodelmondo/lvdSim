@@ -2,6 +2,9 @@
 #include <catch2/catch_test_macros.hpp>
 #include <lvdwave/display_model.hpp>
 
+#include <cmath>
+#include <limits>
+
 using namespace lvd::wave;
 
 namespace {
@@ -226,4 +229,69 @@ TEST_CASE("insertAfter places an item next to another") {
     insertAfter(m, inner, DisplayModel::makeDivider("inside"));
     REQUIRE(m.root().children[0].children.size() == 2);
     REQUIRE(m.root().children[0].children[1].label == "inside");
+}
+
+TEST_CASE("analog range: a manual range is validated, an auto range comes from the data") {
+    REQUIRE(analogRangeError(-1.5, 3.25).empty());
+    REQUIRE(analogRangeError(0.0, 1e-30).empty());
+    REQUIRE_FALSE(analogRangeError(1.0, 1.0).empty());
+    REQUIRE_FALSE(analogRangeError(2.0, -2.0).empty());
+    REQUIRE_FALSE(analogRangeError(std::nan(""), 1.0).empty());
+    REQUIRE_FALSE(analogRangeError(0.0, std::numeric_limits<double>::infinity()).empty());
+
+    AnalogSettings a;  // auto by default
+    REQUIRE(a.autoRange);
+    REQUIRE_FALSE(resolveAnalogRange(a, std::nullopt).has_value());  // no data yet, no range
+    auto r = resolveAnalogRange(a, AnalogRange{-2.0, 6.0});
+    REQUIRE(r.has_value());
+    REQUIRE(r->min == -2.0);
+    REQUIRE(r->max == 6.0);
+    // one constant value: a range around it, never a division by zero
+    r = resolveAnalogRange(a, AnalogRange{4.0, 4.0});
+    REQUIRE(r->min == 3.5);
+    REQUIRE(r->max == 4.5);
+
+    a.autoRange = false;
+    a.min = 0.0;
+    a.max = 3.3;
+    r = resolveAnalogRange(a, AnalogRange{-100.0, 100.0});  // the data does not matter for a manual range
+    REQUIRE(r->min == 0.0);
+    REQUIRE(r->max == 3.3);
+    r = resolveAnalogRange(a, std::nullopt);  // and neither does its absence
+    REQUIRE(r.has_value());
+    a.min = 5.0;  // a bad manual range is repaired, not trusted
+    a.max = 1.0;
+    r = resolveAnalogRange(a, std::nullopt);
+    REQUIRE(r->max > r->min);
+}
+
+TEST_CASE("analog fraction clamps to the row edges") {
+    const AnalogRange r{2.0, 6.0};
+    REQUIRE(analogFraction(r, 2.0) == 0.0);
+    REQUIRE(analogFraction(r, 6.0) == 1.0);
+    REQUIRE(analogFraction(r, 4.0) == 0.5);
+    REQUIRE(analogFraction(r, -1e9) == 0.0);
+    REQUIRE(analogFraction(r, 1e9) == 1.0);
+    REQUIRE(analogFraction(r, std::numeric_limits<double>::infinity()) == 1.0);
+    REQUIRE(analogFraction(r, std::nan("")) == 0.0);
+}
+
+TEST_CASE("a manual analog range round-trips through serialize and parse with scientific values") {
+    DisplayModel m;
+    DisplayItem an = DisplayModel::makeSignal("top.adc");
+    an.analog.enabled = true;
+    an.analog.autoRange = false;
+    an.analog.min = -2.5e-9;
+    an.analog.max = 1.25e6;
+    m.root().children.push_back(std::move(an));
+    const auto back = DisplayModel::parse(m.serialize());
+    REQUIRE(back.ok());
+    const AnalogSettings& a = back.value().root().children[0].analog;
+    REQUIRE_FALSE(a.autoRange);
+    REQUIRE(a.min == -2.5e-9);
+    REQUIRE(a.max == 1.25e6);
+    // and an auto row stays auto
+    m.root().children[0].analog.autoRange = true;
+    const auto autoBack = DisplayModel::parse(m.serialize());
+    REQUIRE(autoBack.value().root().children[0].analog.autoRange);
 }

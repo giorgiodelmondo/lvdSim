@@ -38,6 +38,7 @@
 #include <QMessageBox>
 #include <QPointer>
 #include <QProcess>
+#include <QScrollBar>
 #include <QProcessEnvironment>
 #include <QRegularExpression>
 #include <QSettings>
@@ -211,7 +212,18 @@ void SimWindow::buildUi() {
     connect(stopAction_, &QAction::triggered, this, [this] { stopSimulation(); });
 
     addToolBarBreak();
-    addToolBar(new WaveToolBar(wave_, this));
+    waveToolBar_ = new WaveToolBar(wave_, this);
+    addToolBar(waveToolBar_);
+    {
+        // Follow is a setting: restored here, saved at every change (also when a manual pan switches it off).
+        auto s = openGuiSettings(settingsFile_);
+        wave_->setFollow(s->value(kFollowSettingKey, false).toBool());
+        connect(wave_, &WaveWidget::followChanged, this, [this](bool on) {
+            auto st = openGuiSettings(settingsFile_);
+            st->setValue(kFollowSettingKey, on);
+            st->sync();
+        });
+    }
 
     // Menus
     QMenu* file = menuBar()->addMenu(tr("&File"));
@@ -268,6 +280,11 @@ void SimWindow::buildUi() {
     resetLayout->setObjectName("resetLayout");
     view->addSeparator();
     view->addAction(tr("Zoom &full"), this, [this] { wave_->zoomFull(); });
+    {
+        QAction* follow = waveToolBar_->followAction();
+        follow->setText(tr("F&ollow simulation (stay at end)"));
+        view->addAction(follow);
+    }
     view->addSeparator();
     QMenu* renderer = view->addMenu(tr("&Waveform renderer"));
     renderer->setObjectName("rendererMenu");
@@ -1181,6 +1198,34 @@ bool SimWindow::applyWaveOp(const QString& op) {
             return fail(tr("wave op: no row named %1").arg(a[1]));
         wave_->toggleGroup(r);
         return true;
+    }
+    if (cmd == "follow" && a.size() >= 2) {
+        if (a[1] != "on" && a[1] != "off")
+            return fail(tr("wave op: follow takes on or off"));
+        wave_->setFollow(a[1] == "on");
+        return true;
+    }
+    if (cmd == "zoom" && a.size() >= 2) {  // zoom in by a factor (> 1) or out (< 1) around the middle of the view
+        const double f = a[1].toDouble();
+        if (!(f > 0.0))
+            return fail(tr("wave op: zoom takes a positive factor"));
+        wave_->zoomBy(f);
+        return true;
+    }
+    if (cmd == "scroll-time" && a.size() >= 2) {  // pan so that the left edge is at a fraction (0..1) of the run
+        const double f = std::clamp(a[1].toDouble(), 0.0, 1.0);
+        QScrollBar* bar = wave_->horizontalScrollBar();
+        bar->setValue(static_cast<int>(f * bar->maximum()));
+        return true;
+    }
+    if (cmd == "analog-range" && a.size() >= 3) {  // analog-range NAME[,NAME] auto | MIN MAX
+        if (!selectNames(1))
+            return false;
+        if (a[2] == "auto")
+            return result(wave_->setAnalogRangeForSelection(true));
+        if (a.size() < 4)
+            return fail(tr("wave op: analog-range needs auto or MIN MAX"));
+        return result(wave_->setAnalogRangeForSelection(false, a[2].toDouble(), a[3].toDouble()));
     }
     if (cmd == "undo")
         return result(wave_->undo());

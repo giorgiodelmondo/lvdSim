@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <optional>
 
 namespace lvd::gui {
 
@@ -253,23 +254,22 @@ void buildAnalog(TileGeometry& g, const TileRequest& r, const Palette& pal) {
     if (idx == nullptr || !idx->valid() || idx->size() == 0)
         return buildBus(g, r, pal);
 
-    double vmin = r.style.min, vmax = r.style.max;
+    // One range for every tile of the row: the whole signal (auto) or the user's limits (manual).
+    std::optional<lvd::wave::AnalogRange> data;
     if (r.style.autoRange) {
         const lvd::wave::MinMax all = idx->range(0, idx->size());
-        if (all.empty())
-            return;
-        vmin = all.min;
-        vmax = all.max;
+        if (!all.empty())
+            data = lvd::wave::AnalogRange{all.min, all.max};
     }
-    if (vmax <= vmin) {
-        vmin -= 0.5;
-        vmax += 0.5;
-    }
+    lvd::wave::AnalogSettings settings;
+    settings.autoRange = r.style.autoRange;
+    settings.min = r.style.min;
+    settings.max = r.style.max;
+    const std::optional<lvd::wave::AnalogRange> range = lvd::wave::resolveAnalogRange(settings, data);
+    if (!range)
+        return;
     const double top = kMargin, bottom = r.heightPx - kMargin - 1;
-    auto yOf = [&](double v) {
-        const double f = std::clamp((v - vmin) / (vmax - vmin), 0.0, 1.0);
-        return bottom - f * (bottom - top);
-    };
+    auto yOf = [&](double v) { return bottom - lvd::wave::analogFraction(*range, v) * (bottom - top); };
 
     // A live source may have more changes than the index has seen so far: never read past the index.
     const std::size_t n = std::min(src.count(), idx->size());

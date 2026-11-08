@@ -34,6 +34,7 @@ class ProcessesPane;
 class SourcePane;
 class StructurePane;
 class TranscriptWidget;
+class WaveToolBar;
 class WaveWidget;
 
 /// The simulation window: wave window, objects browser, transcript and the controls to run, restart and
@@ -98,6 +99,9 @@ public:
     void settleLayout();
 
     WaveWidget* wave() const noexcept { return wave_; }
+    WaveToolBar* waveToolBar() const noexcept { return waveToolBar_; }
+    /// Settings key of the Follow state (View > Follow simulation).
+    static constexpr const char* kFollowSettingKey = "wave/follow";
     ObjectsPane* objects() const noexcept { return objects_; }
     TranscriptWidget* transcript() const noexcept { return transcript_; }
     NvcSession& session() noexcept { return session_; }
@@ -206,6 +210,7 @@ private:
     LibraryPane* library_ = nullptr;
     StructurePane* structure_ = nullptr;
     QString settingsFile_;
+    WaveToolBar* waveToolBar_ = nullptr;
     QStringList libraryFolders_;
     QPointer<CompileLibsDialog> compileDialog_;
     QStringList previousArgs_;

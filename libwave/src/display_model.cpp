@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <atomic>
 #include <charconv>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <sstream>
@@ -16,7 +17,8 @@ ItemId nextItemId() noexcept {
 }
 
 std::string DisplayItem::displayName() const {
-    if (!label.empty()) return label;
+    if (!label.empty())
+        return label;
     return path;
 }
 
@@ -62,14 +64,16 @@ namespace {
 void flatten(const DisplayItem& group, int depth, std::vector<DisplayRow>& out) {
     for (const DisplayItem& c : group.children) {
         out.push_back({&c, depth});
-        if (c.kind == ItemKind::Group && c.expanded) flatten(c, depth + 1, out);
+        if (c.kind == ItemKind::Group && c.expanded)
+            flatten(c, depth + 1, out);
     }
 }
 
 std::string quote(const std::string& s) {
     std::string out = "\"";
     for (char c : s) {
-        if (c == '"' || c == '\\') out += '\\';
+        if (c == '"' || c == '\\')
+            out += '\\';
         out += c;
     }
     out += '"';
@@ -85,52 +89,61 @@ void writeItem(const DisplayItem& it, int depth, std::ostringstream& os) {
             std::snprintf(buf, sizeof buf, "%.17g:%.17g", a.min, a.max);
             return std::string(buf);
         }());
-        if (a.interpolation == Interpolation::Linear) s << " linear";
-        if (a.isSigned) s << " signed";
+        if (a.interpolation == Interpolation::Linear)
+            s << " linear";
+        if (a.isSigned)
+            s << " signed";
         s << " height=" << a.heightRows;
         return s.str();
     };
     auto colorText = [](const DisplayItem& i) {
-        if (!i.color) return std::string();
+        if (!i.color)
+            return std::string();
         char buf[16];
         std::snprintf(buf, sizeof buf, " color=#%06x", *i.color & 0xFFFFFFu);
         return std::string(buf);
     };
 
     switch (it.kind) {
-        case ItemKind::Signal:
-            os << pad << "signal " << quote(it.path) << " radix=" << radixName(it.radix);
-            if (!it.label.empty()) os << " label=" << quote(it.label);
-            if (it.showBits) os << " bits";
-            os << colorText(it);
-            if (it.analog.enabled) os << analogText(it.analog);
+    case ItemKind::Signal:
+        os << pad << "signal " << quote(it.path) << " radix=" << radixName(it.radix);
+        if (!it.label.empty())
+            os << " label=" << quote(it.label);
+        if (it.showBits)
+            os << " bits";
+        os << colorText(it);
+        if (it.analog.enabled)
+            os << analogText(it.analog);
+        os << '\n';
+        break;
+    case ItemKind::Divider:
+        os << pad << "divider " << quote(it.label) << '\n';
+        break;
+    case ItemKind::VirtualBus:
+        os << pad << "bus " << quote(it.label) << " radix=" << radixName(it.radix) << colorText(it);
+        if (it.analog.enabled)
+            os << analogText(it.analog);
+        os << '\n';
+        for (const BusMember& m : it.members) {
+            os << pad << "  member " << quote(m.path);
+            if (m.bit >= 0)
+                os << " bit=" << m.bit;
             os << '\n';
-            break;
-        case ItemKind::Divider:
-            os << pad << "divider " << quote(it.label) << '\n';
-            break;
-        case ItemKind::VirtualBus:
-            os << pad << "bus " << quote(it.label) << " radix=" << radixName(it.radix) << colorText(it);
-            if (it.analog.enabled) os << analogText(it.analog);
-            os << '\n';
-            for (const BusMember& m : it.members) {
-                os << pad << "  member " << quote(m.path);
-                if (m.bit >= 0) os << " bit=" << m.bit;
-                os << '\n';
-            }
-            os << pad << "end\n";
-            break;
-        case ItemKind::Group:
-            os << pad << "group " << quote(it.label) << (it.expanded ? " expanded" : " collapsed") << '\n';
-            for (const DisplayItem& c : it.children) writeItem(c, depth + 1, os);
-            os << pad << "end\n";
-            break;
+        }
+        os << pad << "end\n";
+        break;
+    case ItemKind::Group:
+        os << pad << "group " << quote(it.label) << (it.expanded ? " expanded" : " collapsed") << '\n';
+        for (const DisplayItem& c : it.children)
+            writeItem(c, depth + 1, os);
+        os << pad << "end\n";
+        break;
     }
 }
 
 struct Token {
-    std::string key;    // set for key=value tokens
-    std::string value;  // the word, the quoted text, or the value of key=value
+    std::string key;   // set for key=value tokens
+    std::string value; // the word, the quoted text, or the value of key=value
     bool isKeyValue = false;
 };
 
@@ -139,13 +152,15 @@ bool tokenize(const std::string& line, std::vector<Token>& out, std::string& err
     std::size_t i = 0;
     const std::size_t n = line.size();
     auto readQuoted = [&](std::string& dst) -> bool {
-        ++i;  // opening quote
+        ++i; // opening quote
         while (i < n && line[i] != '"') {
-            if (line[i] == '\\' && i + 1 < n) ++i;
+            if (line[i] == '\\' && i + 1 < n)
+                ++i;
             dst += line[i++];
         }
-        if (i >= n) return false;
-        ++i;  // closing quote
+        if (i >= n)
+            return false;
+        ++i; // closing quote
         return true;
     };
 
@@ -162,7 +177,8 @@ bool tokenize(const std::string& line, std::vector<Token>& out, std::string& err
             }
         } else {
             std::string word;
-            while (i < n && line[i] != ' ' && line[i] != '\t' && line[i] != '\r' && line[i] != '"') word += line[i++];
+            while (i < n && line[i] != ' ' && line[i] != '\t' && line[i] != '\r' && line[i] != '"')
+                word += line[i++];
             const std::size_t eq = word.find('=');
             if (eq == std::string::npos) {
                 t.value = word;
@@ -190,7 +206,8 @@ bool parseAnalog(const std::string& v, AnalogSettings& a) {
         return true;
     }
     const std::size_t c = v.find(':');
-    if (c == std::string::npos) return false;
+    if (c == std::string::npos)
+        return false;
     char* end = nullptr;
     a.min = std::strtod(v.substr(0, c).c_str(), &end);
     a.max = std::strtod(v.substr(c + 1).c_str(), &end);
@@ -198,7 +215,42 @@ bool parseAnalog(const std::string& v, AnalogSettings& a) {
     return true;
 }
 
-}  // namespace
+} // namespace
+
+std::string analogRangeError(double min, double max) {
+    if (!std::isfinite(min) || !std::isfinite(max))
+        return "The range limits must be finite numbers.";
+    if (!(min < max))
+        return "Min must be less than Max.";
+    return {};
+}
+
+std::optional<AnalogRange> resolveAnalogRange(const AnalogSettings& settings,
+                                              std::optional<AnalogRange> dataRange) {
+    AnalogRange r;
+    if (settings.autoRange) {
+        if (!dataRange)
+            return std::nullopt;
+        r = *dataRange;
+    } else {
+        r.min = settings.min;
+        r.max = settings.max;
+    }
+    if (!std::isfinite(r.min) || !std::isfinite(r.max))
+        r = AnalogRange{0.0, 1.0};
+    if (!(r.max > r.min)) {
+        const double v = r.min;
+        r = AnalogRange{v - 0.5, v + 0.5};
+    }
+    return r;
+}
+
+double analogFraction(const AnalogRange& range, double value) noexcept {
+    if (std::isnan(value))
+        return 0.0;
+    const double f = (value - range.min) / (range.max - range.min);
+    return f < 0.0 ? 0.0 : (f > 1.0 ? 1.0 : f);
+}
 
 std::vector<DisplayRow> DisplayModel::visibleRows() const {
     std::vector<DisplayRow> rows;
@@ -209,33 +261,39 @@ std::vector<DisplayRow> DisplayModel::visibleRows() const {
 std::string DisplayModel::serialize() const {
     std::ostringstream os;
     os << "lvdwave-display 1\n";
-    for (const DisplayItem& c : root_.children) writeItem(c, 0, os);
+    for (const DisplayItem& c : root_.children)
+        writeItem(c, 0, os);
     return os.str();
 }
 
 Result<DisplayModel> DisplayModel::parse(std::string_view text) {
     using R = Result<DisplayModel>;
     DisplayModel model;
-    std::vector<DisplayItem*> stack{&model.root_};  // open groups
-    DisplayItem* openBus = nullptr;                 // bus currently collecting members
+    std::vector<DisplayItem*> stack{&model.root_}; // open groups
+    DisplayItem* openBus = nullptr;                // bus currently collecting members
 
     std::istringstream in{std::string(text)};
     std::string line;
     int lineNo = 0;
     bool sawHeader = false;
 
-    auto fail = [&](const std::string& msg) { return R::failure("line " + std::to_string(lineNo) + ": " + msg); };
+    auto fail = [&](const std::string& msg) {
+        return R::failure("line " + std::to_string(lineNo) + ": " + msg);
+    };
 
     while (std::getline(in, line)) {
         ++lineNo;
         std::vector<Token> toks;
         std::string err;
-        if (!tokenize(line, toks, err)) return fail(err);
-        if (toks.empty() || (!toks[0].value.empty() && toks[0].value[0] == '#')) continue;
+        if (!tokenize(line, toks, err))
+            return fail(err);
+        if (toks.empty() || (!toks[0].value.empty() && toks[0].value[0] == '#'))
+            continue;
 
         const std::string& cmd = toks[0].value;
         if (!sawHeader) {
-            if (cmd != "lvdwave-display" || toks.size() < 2 || toks[1].value != "1") return fail("missing or unsupported header");
+            if (cmd != "lvdwave-display" || toks.size() < 2 || toks[1].value != "1")
+                return fail("missing or unsupported header");
             sawHeader = true;
             continue;
         }
@@ -244,7 +302,8 @@ Result<DisplayModel> DisplayModel::parse(std::string_view text) {
             if (cmd == "member" && (toks.size() == 2 || toks.size() == 3)) {
                 int bit = -1;
                 if (toks.size() == 3) {
-                    if (!toks[2].isKeyValue || toks[2].key != "bit") return fail("expected bit=N after member path");
+                    if (!toks[2].isKeyValue || toks[2].key != "bit")
+                        return fail("expected bit=N after member path");
                     bit = std::atoi(toks[2].value.c_str());
                 }
                 openBus->members.push_back(BusMember{toks[1].value, bit});
@@ -261,15 +320,18 @@ Result<DisplayModel> DisplayModel::parse(std::string_view text) {
             for (std::size_t i = from; i < toks.size(); ++i) {
                 const Token& t = toks[i];
                 if (t.isKeyValue && t.key == "radix") {
-                    if (!parseRadix(t.value, item.radix)) return "unknown radix " + t.value;
+                    if (!parseRadix(t.value, item.radix))
+                        return "unknown radix " + t.value;
                 } else if (t.isKeyValue && t.key == "label") {
                     item.label = t.value;
                 } else if (t.isKeyValue && t.key == "analog") {
-                    if (!parseAnalog(t.value, item.analog)) return "bad analog range " + t.value;
+                    if (!parseAnalog(t.value, item.analog))
+                        return "bad analog range " + t.value;
                 } else if (t.isKeyValue && t.key == "height") {
                     item.analog.heightRows = std::atoi(t.value.c_str());
                 } else if (t.isKeyValue && t.key == "color") {
-                    if (t.value.size() != 7 || t.value[0] != '#') return "bad colour " + t.value;
+                    if (t.value.size() != 7 || t.value[0] != '#')
+                        return "bad colour " + t.value;
                     item.color = static_cast<std::uint32_t>(std::strtoul(t.value.c_str() + 1, nullptr, 16));
                 } else if (!t.isKeyValue && t.value == "bits") {
                     item.showBits = true;
@@ -287,13 +349,15 @@ Result<DisplayModel> DisplayModel::parse(std::string_view text) {
         DisplayItem& parent = *stack.back();
         if (cmd == "signal" && toks.size() >= 2) {
             DisplayItem it = makeSignal(toks[1].value);
-            if (std::string e = applyOptions(it, 2); !e.empty()) return fail(e);
+            if (std::string e = applyOptions(it, 2); !e.empty())
+                return fail(e);
             parent.children.push_back(std::move(it));
         } else if (cmd == "divider" && toks.size() >= 2) {
             parent.children.push_back(makeDivider(toks[1].value));
         } else if (cmd == "bus" && toks.size() >= 2) {
             DisplayItem it = makeBus(toks[1].value, {});
-            if (std::string e = applyOptions(it, 2); !e.empty()) return fail(e);
+            if (std::string e = applyOptions(it, 2); !e.empty())
+                return fail(e);
             parent.children.push_back(std::move(it));
             openBus = &parent.children.back();
         } else if (cmd == "group" && toks.size() >= 2) {
@@ -301,44 +365,49 @@ Result<DisplayModel> DisplayModel::parse(std::string_view text) {
             parent.children.push_back(makeGroup(toks[1].value, !collapsed));
             stack.push_back(&parent.children.back());
         } else if (cmd == "end") {
-            if (stack.size() == 1) return fail("unbalanced end");
+            if (stack.size() == 1)
+                return fail("unbalanced end");
             stack.pop_back();
         } else {
             return fail("unknown statement " + cmd);
         }
     }
 
-    if (!sawHeader) return R::failure("empty input: missing header");
-    if (openBus != nullptr || stack.size() != 1) return R::failure("unterminated group or bus at end of input");
+    if (!sawHeader)
+        return R::failure("empty input: missing header");
+    if (openBus != nullptr || stack.size() != 1)
+        return R::failure("unterminated group or bus at end of input");
     return model;
 }
 
-
 namespace {
-
 
 DisplayItem* findParentIn(DisplayItem& group, const DisplayItem* item, std::size_t* indexOut) {
     for (std::size_t i = 0; i < group.children.size(); ++i) {
         if (&group.children[i] == item) {
-            if (indexOut != nullptr) *indexOut = i;
+            if (indexOut != nullptr)
+                *indexOut = i;
             return &group;
         }
         if (group.children[i].kind == ItemKind::Group) {
-            if (DisplayItem* p = findParentIn(group.children[i], item, indexOut)) return p;
+            if (DisplayItem* p = findParentIn(group.children[i], item, indexOut))
+                return p;
         }
     }
     return nullptr;
 }
 
 // Indices of the selected items in their parent, ascending, or empty if they do not share a parent.
-std::vector<std::size_t> sharedParentIndices(DisplayModel& model, const std::vector<const DisplayItem*>& items,
+std::vector<std::size_t> sharedParentIndices(DisplayModel& model,
+                                             const std::vector<const DisplayItem*>& items,
                                              DisplayItem*& parentOut) {
     parentOut = nullptr;
     std::vector<std::size_t> idx;
     for (const DisplayItem* it : items) {
         std::size_t i = 0;
         DisplayItem* p = findParent(model, it, &i);
-        if (p == nullptr || (parentOut != nullptr && p != parentOut)) return {};
+        if (p == nullptr || (parentOut != nullptr && p != parentOut))
+            return {};
         parentOut = p;
         idx.push_back(i);
     }
@@ -347,32 +416,41 @@ std::vector<std::size_t> sharedParentIndices(DisplayModel& model, const std::vec
     return idx;
 }
 
-}  // namespace
+} // namespace
 
 DisplayItem* findParent(DisplayModel& model, const DisplayItem* item, std::size_t* indexOut) {
     return findParentIn(model.root(), item, indexOut);
 }
 
 bool groupItems(DisplayModel& model, const std::vector<const DisplayItem*>& items, std::string label) {
-    if (items.empty()) return false;
+    if (items.empty())
+        return false;
     DisplayItem* parent = nullptr;
     const std::vector<std::size_t> idx = sharedParentIndices(model, items, parent);
-    if (idx.empty()) return false;
+    if (idx.empty())
+        return false;
 
     DisplayItem group = DisplayModel::makeGroup(std::move(label));
-    for (std::size_t i : idx) group.children.push_back(std::move(parent->children[i]));
-    for (auto it = idx.rbegin(); it != idx.rend(); ++it) parent->children.erase(parent->children.begin() + static_cast<std::ptrdiff_t>(*it));
-    parent->children.insert(parent->children.begin() + static_cast<std::ptrdiff_t>(idx.front()), std::move(group));
+    for (std::size_t i : idx)
+        group.children.push_back(std::move(parent->children[i]));
+    for (auto it = idx.rbegin(); it != idx.rend(); ++it)
+        parent->children.erase(parent->children.begin() + static_cast<std::ptrdiff_t>(*it));
+    parent->children.insert(parent->children.begin() + static_cast<std::ptrdiff_t>(idx.front()),
+                            std::move(group));
     return true;
 }
 
 std::size_t removeItems(DisplayModel& model, const std::vector<const DisplayItem*>& items) {
     // Resolve to (parent, index) first because erasing shifts pointers.
-    struct Loc { DisplayItem* parent; std::size_t index; };
+    struct Loc {
+        DisplayItem* parent;
+        std::size_t index;
+    };
     std::vector<Loc> locs;
     for (const DisplayItem* it : items) {
         std::size_t i = 0;
-        if (DisplayItem* p = findParent(model, it, &i)) locs.push_back({p, i});
+        if (DisplayItem* p = findParent(model, it, &i))
+            locs.push_back({p, i});
     }
     // Erase from the back of each parent first. Skip items whose ancestor is also being removed.
     std::sort(locs.begin(), locs.end(), [](const Loc& a, const Loc& b) {
@@ -386,20 +464,25 @@ std::size_t removeItems(DisplayModel& model, const std::vector<const DisplayItem
     return n;
 }
 
-bool busFromSignals(DisplayModel& model, const std::vector<const DisplayItem*>& items, std::string label, Radix radix) {
+bool busFromSignals(DisplayModel& model, const std::vector<const DisplayItem*>& items, std::string label,
+                    Radix radix) {
     DisplayItem* parent = nullptr;
     const std::vector<std::size_t> idx = sharedParentIndices(model, items, parent);
-    if (idx.empty()) return false;
+    if (idx.empty())
+        return false;
 
     std::vector<BusMember> members;
     for (std::size_t i : idx) {
         const DisplayItem& it = parent->children[i];
-        if (it.kind == ItemKind::Signal) members.push_back(BusMember{it.path, -1});
+        if (it.kind == ItemKind::Signal)
+            members.push_back(BusMember{it.path, -1});
     }
-    if (members.size() < 2) return false;
+    if (members.size() < 2)
+        return false;
 
     DisplayItem bus = DisplayModel::makeBus(std::move(label), std::move(members), radix);
-    parent->children.insert(parent->children.begin() + static_cast<std::ptrdiff_t>(idx.back()) + 1, std::move(bus));
+    parent->children.insert(parent->children.begin() + static_cast<std::ptrdiff_t>(idx.back()) + 1,
+                            std::move(bus));
     return true;
 }
 
@@ -422,17 +505,22 @@ std::string busValueAt(const WaveStore& store, const std::vector<BusMember>& mem
             continue;
         }
         const Signal& s = store.signal(id);
-        if (s.kind() != SignalKind::Logic) continue;
+        if (s.kind() != SignalKind::Logic)
+            continue;
         const std::size_t idx = s.holdIndex(t);
         if (m.bit >= 0) {
-            if (idx == kNoIndex || static_cast<std::uint32_t>(m.bit) >= s.width()) out += 'U';
-            else out += toChar(s.bit(idx, static_cast<std::uint32_t>(m.bit)));
+            if (idx == kNoIndex || static_cast<std::uint32_t>(m.bit) >= s.width())
+                out += 'U';
+            else
+                out += toChar(s.bit(idx, static_cast<std::uint32_t>(m.bit)));
             continue;
         }
-        if (idx == kNoIndex) out.append(s.width(), 'U');
-        else out += s.bits(idx);
+        if (idx == kNoIndex)
+            out.append(s.width(), 'U');
+        else
+            out += s.bits(idx);
     }
     return out;
 }
 
-}  // namespace lvd::wave
+} // namespace lvd::wave

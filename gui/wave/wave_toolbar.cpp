@@ -6,6 +6,7 @@
 #include "wave/wave_widget.hpp"
 
 #include <QAction>
+#include <QKeySequence>
 #include <QLabel>
 #include <QLineEdit>
 
@@ -57,6 +58,17 @@ WaveToolBar::WaveToolBar(WaveWidget* wave, QWidget* parent)
             this, [this] { wave_->zoomBy(1.0 / 1.5); });
     connect(add("zoomFit", tr("Fit"), tr("Show the whole simulation (F)"), makeIcon(Icon::ZoomFit)),
             &QAction::triggered, this, [this] { wave_->zoomFull(); });
+
+    follow_ = add("follow", tr("Follow"), tr("Follow simulation (stay at end)"), makeIcon(Icon::Follow));
+    follow_->setCheckable(true);
+    follow_->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F));
+    follow_->setShortcutContext(Qt::WindowShortcut);
+    follow_->setStatusTip(tr("Keep the right edge of the view at the end of the simulation as it runs (Ctrl+Shift+F)"));
+    follow_->setChecked(wave_->follow());
+    connect(follow_, &QAction::toggled, this, [this](bool on) { wave_->setFollow(on); });
+    connect(wave_, &WaveWidget::followChanged, this, [this](bool on) {
+        if (follow_->isChecked() != on) follow_->setChecked(on);
+    });
 
     addSeparator();
     connect(add("addCursor", tr("Add cursor"),

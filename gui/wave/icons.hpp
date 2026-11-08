@@ -27,9 +27,10 @@ enum class Icon {
     Divider,
     StepDelta,
     StepTime,
+    Follow,
 };
 
-inline constexpr int kIconCount = 17;
+inline constexpr int kIconCount = 18;
 
 /// One icon at a pixel size. `fg` is used for the outline shapes; Run, Stop and the cursor icons keep their
 /// own accent colour (green, red, amber) so they are recognised at a glance.

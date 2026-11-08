@@ -115,7 +115,7 @@ private slots:
             QVERIFY2(!a->text().isEmpty(),
                      qPrintable(a->objectName() + " has no text for menus and accessibility"));
         }
-        QCOMPARE(actions, 11);
+        QCOMPARE(actions, 12);
     }
 };
 

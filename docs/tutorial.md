@@ -284,6 +284,42 @@ Moving a row never redraws it: the waveform tiles of a row are cached under the 
 group names, the divider texts and the collapsed state are kept by **File > Save wave format** (an `add wave` script, with `-group A/B`
 for nested groups; see [display-format.md](display-format.md)), by **Save wave layout**, and across **Restart**.
 
+#### Scroll bars, Follow and analog settings
+
+![Zoomed in: the horizontal bar shows which part of the run is visible; the vertical bar scrolls the rows](images/wave_scrollbars.png)
+
+- **Horizontal bar (time).** Its range is the whole run the window knows (0 to the end of the data, growing while a simulation runs).
+  The thumb is the visible window and fills the bar when everything is shown. Drag it, click beside it for a page, use the arrows
+  (a tenth of a window) or the wheel over it. The bar follows every other way of moving the view (shift or sideways wheel, middle
+  drag, Ctrl+Left/Right, zoom, Go to).
+- **Vertical bar (rows).** It scrolls the name column, the value column and the waveforms together (they are one window with one
+  scroll offset), also with 10 000 rows. The plain mouse wheel scrolls it too.
+- **Follow** (toolbar button with the `>>|` icon, tooltip "Follow simulation (stay at end)", **View > Follow simulation**, Ctrl+Shift+F):
+  while on, the right edge of the view stays at the end of the recorded data as the run grows, with the zoom width you have, like
+  `tail -f`. Zoom first (for example `+`), then switch it on, and run: the window slides along with `run` commands.
+  ![Follow on: the view sits at the end of the run (2 us) and the button is pressed](images/wave_follow_on.png)
+  Anything that moves the window by hand switches it off and the button pops out: the horizontal bar, shift/sideways wheel, middle
+  drag, Ctrl+Left/Right, Home/End, Go to, a cursor jump that has to scroll, Zoom full (`F`). Zooming (wheel, `+`, `-`) keeps it on and
+  keeps the end at the right edge, instead of the point under the pointer. If you never zoomed, the view still fits the whole run
+  (which ends at the end of the data as well) until your first zoom. The state is saved in the settings (`wave/follow`). With Follow
+  off nothing moves when data arrives, except that a view that is already showing the end keeps showing it.
+- **Analog Settings...** (context menu of an analog row, and the Wave menu): a modal dialog for the selected analog rows. **Auto range**
+  (default) draws between the lowest and highest value of the whole signal, the same for every tile and every zoom level (it grows
+  while a live run produces new extremes, and the row is redrawn). **Manual range** takes **Min** and **Max** (`-1.5`, `2e-3` ...),
+  preloaded with the range the row is drawn with now; OK stays disabled with a message while Min is not less than Max or a field is
+  not a number. Values outside the range are drawn on the top or bottom edge of the row. One undo step (`Ctrl+Z`). The range is saved
+  in layouts and in `.do` files as `-min`/`-max` (see [display-format.md](display-format.md)).
+
+| Auto range (0 to 3.3 V of the data) | Manual range 1 to 2.5, the sine is clipped at both edges |
+|---|---|
+| ![](images/wave_analog_auto.png) | ![](images/wave_analog_manual.png) |
+
+![The Analog Settings entry in the context menu](images/wave_analog_menu.png)
+![The dialog with Min above Max: OK is disabled and the message says why](images/analog_settings_dialog_error.png)
+
+For screenshots, `--wave-op "zoom 5"`, `"scroll-time 0.35"` (left edge at a fraction of the run), `"follow on|off"` and
+`"analog-range NAME auto"` / `"analog-range NAME MIN MAX"` work like the other `--wave-op` commands.
+
 ### The toolbars
 
 ![Simulation toolbar (run, run -all, restart, stop, step delta, step time) and wave toolbar](images/toolbar.png)

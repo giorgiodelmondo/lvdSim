@@ -116,6 +116,12 @@ void draw(QPainter& p, Icon icon, const QColor& fg) {
         p.drawLine(QPointF(21, 7), QPointF(21, 17));
         break;
 
+    case Icon::Follow: // chevrons running into the end of the data: stay at the end
+        p.drawPolyline(QPolygonF({{3, 6}, {9, 12}, {3, 18}}));
+        p.drawPolyline(QPolygonF({{9.5, 6}, {15.5, 12}, {9.5, 18}}));
+        p.drawLine(QPointF(20, 4), QPointF(20, 20));
+        break;
+
     case Icon::StepDelta: // the delta sign: one delta cycle
         p.drawPolygon(QPolygonF({{12, 4}, {3.5, 19.5}, {20.5, 19.5}}));
         break;

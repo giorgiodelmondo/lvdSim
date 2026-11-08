@@ -9,6 +9,7 @@
 #include "app/structure_pane.hpp"
 #include "app/transcript_widget.hpp"
 #include "wave/render_policy.hpp"
+#include "wave/wave_toolbar.hpp"
 #include "wave/wave_widget.hpp"
 
 #include <QAction>
@@ -20,6 +21,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
+#include <QMenuBar>
 #include <QPlainTextEdit>
 #include <QSignalSpy>
 #include <QStandardPaths>
@@ -222,6 +224,82 @@ private slots:
         QVERIFY(w.waitUntilIdle());
         QVERIFY(!w.wave()->autoFit());
         QCOMPARE(w.wave()->view().startTime, start); // not at the end before, so it stays where it was
+    }
+
+    void followKeepsTheRightEdgeAtTheEndOfARunningSimulation() {
+        Design d;
+        PREPARE(d);
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        SimWindow w(d.environment(), dir.path() + "/s.ini");
+        w.setDialogsEnabled(false);
+        QVERIFY(w.startSimulation({"-do", "add wave /cnt; run 50 ns", "work.t"}));
+        QVERIFY(w.waitUntilIdle());
+        QCOMPARE(w.store()->endTime(), Time{50000000});
+        WaveWidget* wave = w.wave();
+
+        wave->zoomBy(4.0);  // a window of a quarter of the run: the width Follow keeps
+        const double tpp = wave->view().timePerPixel;
+        QVERIFY(w.applyWaveOp("follow on"));
+        QVERIFY(wave->follow());
+        QVERIFY(w.waveToolBar()->followAction()->isChecked());
+        for (int i = 1; i <= 3; ++i) {
+            w.sendCommand("run 40 ns");  // the live stream grows; the 60 ms poll updates the view
+            QVERIFY(w.waitUntilIdle());
+            const double end = static_cast<double>(w.store()->endTime());
+            QCOMPARE(end, 50000000.0 + 40000000.0 * i);
+            QVERIFY2(qAbs(wave->view().endTime() - end) <= tpp * 2, qPrintable(QString::number(wave->view().endTime())));
+            QCOMPARE(wave->view().timePerPixel, tpp);
+        }
+
+        // a manual pan switches it off and the next run leaves the view where it is
+        QVERIFY(w.applyWaveOp("scroll-time 0"));
+        QVERIFY(!wave->follow());
+        QVERIFY(!w.waveToolBar()->followAction()->isChecked());
+        const double start = wave->view().startTime;
+        w.sendCommand("run 40 ns");
+        QVERIFY(w.waitUntilIdle());
+        QCOMPARE(wave->view().startTime, start);
+
+        // and back on: it jumps to the end again
+        w.waveToolBar()->followAction()->trigger();
+        QVERIFY(wave->follow());
+        QVERIFY(qAbs(wave->view().endTime() - static_cast<double>(w.store()->endTime())) <= tpp * 2);
+        QVERIFY(!w.applyWaveOp("follow maybe"));
+    }
+
+    void followIsASettingAndAMenuEntry() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString ini = dir.path() + "/s.ini";
+        const lvd::tools::Environment env = lvd::tools::discoverEnvironment();
+        {
+            SimWindow w(env, ini);
+            QVERIFY(!w.wave()->follow());
+            QAction* a = w.waveToolBar()->followAction();
+            QVERIFY(!a->shortcut().isEmpty());
+            // the View menu has the same action
+            bool inView = false;
+            for (QAction* m : w.menuBar()->actions())
+                if (m->menu() && m->text().remove('&') == "View")
+                    inView = m->menu()->actions().contains(a);
+            QVERIFY(inView);
+            a->trigger();
+            QVERIFY(w.wave()->follow());
+        }
+        QCOMPARE(QSettings(ini, QSettings::IniFormat).value("wave/follow").toBool(), true);
+        {
+            SimWindow w(env, ini);
+            QVERIFY(w.wave()->follow());  // restored
+            QVERIFY(w.waveToolBar()->followAction()->isChecked());
+            w.wave()->setView(0.0, 1.0);  // a manual change turns it off and the setting follows
+            QVERIFY(!w.wave()->follow());
+        }
+        QCOMPARE(QSettings(ini, QSettings::IniFormat).value("wave/follow").toBool(), false);
+        {
+            SimWindow w(env, ini);
+            QVERIFY(!w.wave()->follow());
+        }
     }
 
     void addWaveVariantsFromTheShell() {

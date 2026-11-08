@@ -6,6 +6,7 @@ endif()
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Test)
 
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 
 add_library(lvdgui_wave STATIC
     wave/view_state.cpp
@@ -16,6 +17,8 @@ add_library(lvdgui_wave STATIC
     wave/render_policy.cpp
     wave/wave_widget.cpp
     wave/wave_widget_arrange.cpp
+    wave/analog_settings_dialog.cpp
+    wave/res/wave_bars.qrc
     wave/wave_toolbar.cpp
     wave/icons.cpp)
 target_include_directories(lvdgui_wave PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
