@@ -19,6 +19,8 @@ ItemId nextItemId() noexcept {
 std::string DisplayItem::displayName() const {
     if (!label.empty())
         return label;
+    if (kind == ItemKind::Expression)
+        return expr;
     return path;
 }
 
@@ -56,6 +58,26 @@ DisplayItem DisplayModel::makeBus(std::string label, std::vector<BusMember> memb
     i.label = std::move(label);
     i.members = std::move(members);
     i.radix = radix;
+    return i;
+}
+
+DisplayItem DisplayModel::makeExpression(std::string label, std::string expr, Radix radix) {
+    DisplayItem i;
+    i.kind = ItemKind::Expression;
+    i.label = std::move(label);
+    i.expr = std::move(expr);
+    i.radix = radix;
+    return i;
+}
+
+DisplayItem DisplayModel::makeCompare(std::string label, std::string refPath, std::string testPath,
+                                      Time tolerance) {
+    DisplayItem i;
+    i.kind = ItemKind::Compare;
+    i.label = std::move(label);
+    i.members = {BusMember{std::move(refPath)}, BusMember{std::move(testPath)}};
+    i.tolerance = tolerance;
+    i.color = 0xff6060u;
     return i;
 }
 
@@ -97,11 +119,15 @@ void writeItem(const DisplayItem& it, int depth, std::ostringstream& os) {
         return s.str();
     };
     auto colorText = [](const DisplayItem& i) {
-        if (!i.color)
-            return std::string();
-        char buf[16];
-        std::snprintf(buf, sizeof buf, " color=#%06x", *i.color & 0xFFFFFFu);
-        return std::string(buf);
+        std::string out;
+        if (i.color) {
+            char buf[16];
+            std::snprintf(buf, sizeof buf, " color=#%06x", *i.color & 0xFFFFFFu);
+            out = buf;
+        }
+        if (i.heightPx > 0) // the row height in pixels travels with the other per-row display options
+            out += " heightpx=" + std::to_string(i.heightPx);
+        return out;
     };
 
     switch (it.kind) {
@@ -117,7 +143,7 @@ void writeItem(const DisplayItem& it, int depth, std::ostringstream& os) {
         os << '\n';
         break;
     case ItemKind::Divider:
-        os << pad << "divider " << quote(it.label) << '\n';
+        os << pad << "divider " << quote(it.label) << colorText(it) << '\n';
         break;
     case ItemKind::VirtualBus:
         os << pad << "bus " << quote(it.label) << " radix=" << radixName(it.radix) << colorText(it);
@@ -131,6 +157,19 @@ void writeItem(const DisplayItem& it, int depth, std::ostringstream& os) {
             os << '\n';
         }
         os << pad << "end\n";
+        break;
+    case ItemKind::Expression:
+        os << pad << "expr " << quote(it.label) << ' ' << quote(it.expr) << " radix=" << radixName(it.radix)
+           << colorText(it);
+        if (it.analog.enabled)
+            os << analogText(it.analog);
+        os << '\n';
+        break;
+    case ItemKind::Compare:
+        os << pad << "compare " << quote(it.label) << ' '
+           << quote(it.members.size() > 0 ? it.members[0].path : std::string()) << ' '
+           << quote(it.members.size() > 1 ? it.members[1].path : std::string())
+           << " tolerance=" << it.tolerance << colorText(it) << '\n';
         break;
     case ItemKind::Group:
         os << pad << "group " << quote(it.label) << (it.expanded ? " expanded" : " collapsed") << '\n';
@@ -216,6 +255,25 @@ bool parseAnalog(const std::string& v, AnalogSettings& a) {
 }
 
 } // namespace
+
+int clampRowHeight(int px) noexcept {
+    if (px <= 0)
+        return 0;
+    return px < kMinRowHeightPx ? kMinRowHeightPx : (px > kMaxRowHeightPx ? kMaxRowHeightPx : px);
+}
+
+int rowHeightPx(const DisplayItem& item, bool analogTrace) noexcept {
+    if (item.heightPx > 0)
+        return clampRowHeight(item.heightPx);
+    if (analogTrace)
+        return clampRowHeight((item.analog.heightRows < 1 ? 1 : item.analog.heightRows) *
+                              kDefaultRowHeightPx);
+    return kDefaultRowHeightPx;
+}
+
+bool analogSigned(const DisplayItem& item) noexcept {
+    return item.analog.isSigned || item.radix == Radix::Signed;
+}
 
 std::string analogRangeError(double min, double max) {
     if (!std::isfinite(min) || !std::isfinite(max))
@@ -329,10 +387,14 @@ Result<DisplayModel> DisplayModel::parse(std::string_view text) {
                         return "bad analog range " + t.value;
                 } else if (t.isKeyValue && t.key == "height") {
                     item.analog.heightRows = std::atoi(t.value.c_str());
+                } else if (t.isKeyValue && t.key == "heightpx") {
+                    item.heightPx = clampRowHeight(std::atoi(t.value.c_str()));
                 } else if (t.isKeyValue && t.key == "color") {
                     if (t.value.size() != 7 || t.value[0] != '#')
                         return "bad colour " + t.value;
                     item.color = static_cast<std::uint32_t>(std::strtoul(t.value.c_str() + 1, nullptr, 16));
+                } else if (t.isKeyValue && t.key == "tolerance") {
+                    item.tolerance = std::strtoull(t.value.c_str(), nullptr, 10);
                 } else if (!t.isKeyValue && t.value == "bits") {
                     item.showBits = true;
                 } else if (!t.isKeyValue && t.value == "linear") {
@@ -352,8 +414,23 @@ Result<DisplayModel> DisplayModel::parse(std::string_view text) {
             if (std::string e = applyOptions(it, 2); !e.empty())
                 return fail(e);
             parent.children.push_back(std::move(it));
+        } else if (cmd == "expr" && toks.size() >= 3 && !toks[1].isKeyValue && !toks[2].isKeyValue) {
+            DisplayItem it = makeExpression(toks[1].value, toks[2].value);
+            if (std::string e = applyOptions(it, 3); !e.empty())
+                return fail(e);
+            parent.children.push_back(std::move(it));
+        } else if (cmd == "compare" && toks.size() >= 4 && !toks[1].isKeyValue && !toks[2].isKeyValue &&
+                   !toks[3].isKeyValue) {
+            DisplayItem it = makeCompare(toks[1].value, toks[2].value, toks[3].value);
+            it.color.reset(); // only what the file says
+            if (std::string e = applyOptions(it, 4); !e.empty())
+                return fail(e);
+            parent.children.push_back(std::move(it));
         } else if (cmd == "divider" && toks.size() >= 2) {
-            parent.children.push_back(makeDivider(toks[1].value));
+            DisplayItem it = makeDivider(toks[1].value);
+            if (std::string e = applyOptions(it, 2); !e.empty())
+                return fail(e);
+            parent.children.push_back(std::move(it));
         } else if (cmd == "bus" && toks.size() >= 2) {
             DisplayItem it = makeBus(toks[1].value, {});
             if (std::string e = applyOptions(it, 2); !e.empty())

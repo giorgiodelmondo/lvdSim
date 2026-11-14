@@ -39,16 +39,47 @@ double numericValue(const Signal& s, std::size_t change, bool isSigned) noexcept
     return static_cast<double>(v);
 }
 
+double numericValueOfBits(std::string_view bits, bool isSigned) noexcept {
+    const std::size_t w = bits.size();
+    if (w == 0 || w > 64) return std::nan("");
+    std::uint64_t v = 0;
+    for (char c : bits) {
+        v <<= 1;
+        if (c == '1' || c == 'H' || c == 'h') v |= 1;
+        else if (c != '0' && c != 'L' && c != 'l') return std::nan("");
+    }
+    if (isSigned && w < 64 && (v >> (w - 1)) != 0) v |= ~std::uint64_t{0} << w;  // sign extend
+    if (isSigned) return static_cast<double>(static_cast<std::int64_t>(v));
+    return static_cast<double>(v);
+}
+
+NumericIndex NumericIndex::fromValues(std::vector<double> values, bool isSigned) {
+    NumericIndex idx;
+    idx.signed_ = isSigned;
+    idx.valid_ = true;
+    idx.detached_ = true;
+    idx.values_ = std::move(values);
+    if (!idx.values_.empty()) idx.rebuildFrom(0);
+    return idx;
+}
+
 NumericIndex NumericIndex::build(const Signal& signal, bool isSigned) {
     NumericIndex idx;
     idx.signed_ = isSigned;
     idx.valid_ = signal.kind() == SignalKind::Real || (signal.kind() == SignalKind::Logic && signal.width() <= 64);
+    idx.generation_ = signal.generation();
     if (idx.valid_) idx.update(signal);
     return idx;
 }
 
 void NumericIndex::update(const Signal& signal) {
-    if (!valid_) return;
+    if (!valid_ || detached_) return;
+    if (signal.generation() != generation_) {
+        // The signal was cleared (a restarted live run): its changes are all new
+        values_.clear();
+        levels_.clear();
+        generation_ = signal.generation();
+    }
     const std::size_t from = values_.size();
     const std::size_t n = signal.changeCount();
     values_.reserve(n);

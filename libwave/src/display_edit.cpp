@@ -479,6 +479,14 @@ Out renameItem(DisplayModel& model, ItemId id, std::string label) {
         if (label.empty())
             return Out::failure("a bus needs a name");
         break;
+    case ItemKind::Expression:
+        if (label.empty())
+            return Out::failure("an expression signal needs a name");
+        break;
+    case ItemKind::Compare:
+        if (label.empty())
+            return Out::failure("a compare row needs a name");
+        break;
     case ItemKind::Signal:
         if (label == it->path)
             label.clear(); // the path is the default display name

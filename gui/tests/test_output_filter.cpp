@@ -152,6 +152,38 @@ private slots:
         }
     }
 
+    void aJsonReplyOnThePromptLineInOneRead() {
+        // Output of Tcl puts (the GUI's stop probe) is written before the shell's echo, right after the
+        // prompt the command followed. Read together with that prompt it still belongs to command 0, not to
+        // -1.
+        const QByteArray all = kPrompt + "{\"v\":1,\"frames\":[]}\r\nif {1} {puts x}\r\n" + kPrompt;
+        for (int cut = 0; cut < all.size(); ++cut) {
+            OutputFilter f;
+            const auto a = cut == 0 ? FilteredOutput{} : f.feed(all.left(cut));
+            const auto b = f.feed(all.mid(cut));
+            QCOMPARE(a.replies.size() + b.replies.size(), std::size_t{1});
+            const auto& r = a.replies.empty() ? b.replies[0] : a.replies[0];
+            QVERIFY2(r.prompt == 1, qPrintable(QString("cut %1: prompt %2").arg(cut).arg(r.prompt)));
+            QCOMPARE(a.prompts + b.prompts, 2);
+            QCOMPARE(a.text + b.text, QString("% if {1} {puts x}\n% "));
+        }
+    }
+
+    void halfAPromptAfterAHeldBackLineIsKept() {
+        // A line that may still become a notice or a reply is held back; half a prompt behind it must not be
+        // lost, or the session would wait for that prompt for ever.
+        for (const QByteArray& start : {QByteArray("{"), QByteArray("@@lv"), QByteArray("{\"v")}) {
+            for (int k = 1; k < kPrompt.size(); ++k) {
+                OutputFilter f;
+                const auto a = f.feed(start + kPrompt.left(k));
+                const auto b = f.feed(kPrompt.mid(k) + "x\r\n");
+                QVERIFY2(a.prompts + b.prompts == 1,
+                         qPrintable(QString("%1 + %2 prompt bytes").arg(QString::fromLatin1(start)).arg(k)));
+                QCOMPARE(a.text + b.text, QString::fromLatin1(start) + "% x\n");
+            }
+        }
+    }
+
     void jsonLookalikesStayInTheText() {
         OutputFilter f;
         const auto o = f.feed("{\"x\":1}\r\n{ \"v\":1}\r\n");

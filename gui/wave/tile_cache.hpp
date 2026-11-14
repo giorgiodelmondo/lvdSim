@@ -30,11 +30,13 @@ struct TileKeyHash {
 
 std::uint64_t scaleBitsOf(double timePerPixel) noexcept;
 
-/// Least-recently-used cache of tile images with a fixed entry limit.
+/// Least-recently-used cache of tile images with an entry limit and an optional memory limit (bytes of image
+/// data, 0 = none). Rows of any height share it: tall tiles count for more than short ones.
 class TileCache {
 public:
-    explicit TileCache(std::size_t capacity = 512)
-        : capacity_(capacity) {}
+    explicit TileCache(std::size_t capacity = 512, std::size_t maxBytes = 0)
+        : capacity_(capacity)
+        , maxBytes_(maxBytes) {}
 
     /// Returns the cached image and marks it recently used, or nullptr. The pointer is valid until the
     /// next call that modifies the cache.
@@ -42,6 +44,7 @@ public:
     void put(const TileKey& key, QImage image);
     void clear();
     std::size_t size() const noexcept { return map_.size(); }
+    std::size_t bytes() const noexcept { return bytes_; }
     std::size_t hits() const noexcept { return hits_; }
     std::size_t misses() const noexcept { return misses_; }
 
@@ -51,6 +54,8 @@ private:
         QImage image;
     };
     std::size_t capacity_;
+    std::size_t maxBytes_;
+    std::size_t bytes_ = 0;
     std::list<Entry> order_; // front = most recently used
     std::unordered_map<TileKey, std::list<Entry>::iterator, TileKeyHash> map_;
     std::size_t hits_ = 0, misses_ = 0;

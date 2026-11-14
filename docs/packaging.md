@@ -557,6 +557,163 @@ Verified by the scripts themselves: Windows installer and zip (1074 entries, no 
 
 Not repeated: the second Windows installer run with the `PATH` task enabled (the `PATH` writing code is unchanged), a real GPU check of the new builds, Windows 10.
 
+### Rebuild 2026-11-12
+
+Reason: the current tree (many GUI changes: row arranging, scroll bars and follow, analog settings, default layout with Library and Sim tabs over Objects,
+drag from Objects, port icons, end-of-data and analog fixes, GUI-default example scripts) and the kernel `kernel/nvc` at `lvdsim` commit `53d41eeae` (merge of
+upstream master). Kernel not rebuilt: Windows `kernel/nvc/build` and Linux `~/build/nvc-fork-linux-s2` both report `nvc 1.24-devel (53d41eeae)`. The tree had
+uncommitted changes, so `git commit` in `build-info.txt` (`5a73a31`) does not describe the sources exactly.
+
+Tests before packaging: Windows `mingw-debug` (`-Werror`) 200 of 200; Linux (`~/build/lvdsim-rel2`, Debug, GUI on) 200 of 200 with `LVDSIM_NVC` pointing at the new
+Linux nvc (the 10 integration tests then run instead of skipping). **`scripts_libs_compile` on Linux was a test-environment problem, not a regression:**
+`scripts/libs/test_libs.sh` took `kernel/nvc/build/bin/nvc.exe` whenever it was "executable", and on a `/mnt/d` checkout under WSL every file is, so the Windows
+nvc was asked to compile with Linux paths and every file failed (no Linux `nvc` is on that PATH). Fixed in the script (not the kernel): on Linux it now uses
+`LVDSIM_NVC` if set, else the newest `~/build/nvc-fork-linux*` whose version line has the abbreviated kernel commit, else a Linux `kernel/nvc/build/bin/nvc`, else
+`nvc` on `PATH`, else skips with 77. `nvc.exe` is only used on Windows.
+
+| File | Bytes | SHA-256 |
+|------|------:|---------|
+| `lvdsim-0.1.0-win64-setup.exe` | 54 752 790 | `286ac23868572822dfe2728659bd53aea8b40eb77a162c73074c40e6c44ab9ce` |
+| `lvdsim-0.1.0-win64-portable.zip` | 76 927 669 | `9b96df84485420f7e9eb669edf12d190f8e21399285304b6255278735fdc7543` |
+| `lvdsim-0.1.0-linux-x86_64.run` | 71 684 171 | `f86384319f6f6cf5f16a215b063d2b4968574a0787aaeef1f5748f193a2a4a32` |
+| `lvdsim-0.1.0-linux-x86_64-portable.tar.gz` | 102 682 708 | `b6fe16fb6e5d44855c2d4e9bc3d5bae6f034f8cfb3b225355b9b907d91244e78` |
+
+Folders: `build/release/0.1.0-20261112-190124` (Windows) and `build/release/linux-0.1.0-20261112-r2` (Linux, `--copy-to-windows`; originals in WSL
+`~/build/lvdsim/release/0.1.0-20261112-190128`). Linux nvc: `--nvc-build ~/build/nvc-fork-linux-s2` (Debian LLVM 19.1.7). The Linux `build-info.txt` says "15 uncommitted
+change(s) in kernel/nvc": that count is taken by git on the `/mnt/d` drive (file mode noise); the Windows build-info of the same tree says 0.
+
+Verified by the scripts: as in the earlier sections (Windows 1074 files, PE dependency scan, smoke `vlib`/`vcom`/`vsim -c`; Linux `--check`, 149 ELF files isolated, smoke
+install, uninstall leaves `HOME` as before, portable flow). Verified by hand afterwards:
+
+* Windows installer, `/VERYSILENT /CURRENTUSER /DIR=<throwaway>`: (a) `/TASKS="!addtopath,!desktopicon"`: 1074 files, no `portable.txt`, installed nvc is `53d41eeae`, `vlib` runs, uninstall removes the
+  directory, raw user `PATH` (REG_EXPAND_SZ, 440 characters, read with `DoNotExpandEnvironmentNames`, backed up first) identical after install and after uninstall, `reg query` text identical;
+  (b) `/TASKS="addtopath,!desktopicon"`: the raw value after install is exactly the old value plus `;<dir>`, after uninstall it is identical to the original again (kind and value, byte for byte).
+  The all-users install in `C:\Program Files\lvdsim` and its HKLM key were not touched (still present).
+* Windows zip, unpacked into a new folder, `PATH` = package folder plus `C:\Windows` and `System32`: `nvc.exe` SHA-256 equal to `kernel/nvc/build/bin/nvc.exe`; `vlib`, `vlog`, `vlog -sv`, `vcom -2008`, `vsim -c`
+  of `examples/mixed_language` give `events {"00000010"} avg {"00101110"}`; `lvdsim-gui` offscreen with `-do sim.do work.tb_mixed --screenshot` shows Library|Sim tabs over Objects, the vertical and horizontal
+  wave scroll bars and the new toolbar button; started on the real windows platform (no offscreen) its own screenshot shows `Renderer: GPU`.
+* Linux `.run` (`sha256sum -c` of both files, `--check`), install into a throwaway prefix and `HOME` (`--no-path`), the same flow from `PATH=<prefix>/bin:/usr/bin:/bin` (all exit 0, same values), offscreen GUI screenshot
+  (same layout, `Renderer: QPainter (GPU not available: platform offscreen)`), `--uninstall` removes the prefix, `.local`, icon and desktop entry (only `.config/lvdsim/lvdsim.conf` written by the GUI remains).
+  Portable tarball in a clean `HOME`: same flow, GUI settings in `data/lvdsim-gui.ini`, `HOME` left empty.
+
+Not verified: the Windows installer's installed GUI (same payload as the zip, only the zip GUI was started), all-users install, signing, a real GPU on Linux, Windows 10, other distributions.
+
+### Release 0.1.5 (2026-11-14)
+
+Reason: version 0.1.5 (`project(lvdsim VERSION 0.1.5)`), the current tree (new docks Project, Coverage, Memory, List, Call Stack, Locals, Problems,
+Regression; console completion; expressions; SDF; projects and regression runs) and the kernel `kernel/nvc` at `lvdsim` commit `53d41eeae` plus the
+uncommitted change sets 04 to 39 (140 files, all staged). The library format of the kernel changed (node layout), so both packages ship standard libraries
+freshly built by their own nvc build. The tree had uncommitted changes, so `git commit` in `build-info.txt` (`5a73a31`) does not describe the sources exactly.
+
+Kernel builds: Windows `kernel/nvc/build` (current, `nvc 1.24-devel (53d41eeae) (Using LLVM 23.1.5)`, not rebuilt). Linux: the existing builds did not fit
+(`~/build/nvc-fork-linux-s9*` were made from upstream `0b2837794` plus patch files and report `0b2837794`; `~/build/nvc-fork-linux-s2` reports `53d41eeae` but
+lacks the change sets), so a new one was made from the fork tree: clone of `kernel/nvc` (`core.autocrlf=false`) at `53d41eeae` in `~/build/nvc-fork-src-rel015`, the
+working tree diff applied (`git diff --cached --binary HEAD`, LF only, `D:/tmp/nvc-rel015-wt.patch`), `configure --enable-tcl` in `~/build/nvc-fork-linux-rel015`
+(Debian LLVM 19.1.7), 0 compiler warnings, `nvc 1.24-devel (53d41eeae) (Using LLVM 19.1.7)`. Its `make check`: regress 1571 ok of 1571, unit tests 24 suites,
+1182 checks, 0 failures, 0 errors. Logs: WSL `~/build/nvc-fork-rel015-{autogen,configure,make,check}.log`.
+
+Tests before packaging: Windows `mingw-debug` (`-Werror`, fresh `build/mingw-debug-rel015`) 317 of 317; Linux Debug with the GUI (fresh `~/build/lvdsim-rel015`,
+`LVDSIM_NVC`/`LVDSIM_NVC_LIBDIR` set to `~/build/nvc-fork-linux-rel015`) 317 of 317. **The first release build failed** on both platforms: at `-O2` GCC 13.1
+(MinGW) and GCC 14.2 (Debian) report `-Werror=stringop-overflow` for the range `insert` that appends child scopes to the growing work list in
+`Database::childInstances` (`tools/src/coverage.cpp`), a known false positive that the Debug build does not see. Replaced by an equivalent `push_back` loop;
+both debug suites rerun after the change, 317 of 317 each. The empty output folders of the failed runs were moved to
+`D:/tmp/release-0.1.5-failed-win-20261114-121109` and `D:/tmp/release-0.1.5-failed-linux-20261114-121109`.
+
+| File | Bytes | SHA-256 |
+|------|------:|---------|
+| `lvdsim-0.1.5-win64-setup.exe` | 55 986 702 | `e14a7c28d9bb298d0fe7a453a5d0c69d0019568c2e60a4da1007cc33f7ed0381` |
+| `lvdsim-0.1.5-win64-portable.zip` | 80 568 376 | `be0e2c0163355de65c7186a77d5b90c381c98be63b3c6ecd9eb3fda9c10c40a5` |
+| `lvdsim-0.1.5-linux-x86_64.run` | 72 398 615 | `3d223bd7c914a870eab6c91644bec64265cae78b80ddf05e6ba77e68109981cf` |
+| `lvdsim-0.1.5-linux-x86_64-portable.tar.gz` | 106 120 262 | `31911fec187af95e19a6d10097072d9e1fc855cd526b8e623e7b731149f59e90` |
+
+Folders: `build/release/0.1.5-20261114-121259` (Windows) and `build/release/linux-0.1.5-20261114-121317` (Linux, `--copy-to-windows`; originals in WSL
+`~/build/lvdsim/release/0.1.5-20261114-121317`). Linux nvc: `--nvc-build ~/build/nvc-fork-linux-rel015`. `build-info.txt` counts the uncommitted kernel changes as
+140 (Windows) and 152 (Linux, file mode noise of the `/mnt/d` checkout, as before).
+
+Verified by the scripts: Windows installer 53.4 MB, zip 1074 entries with the required files, no `portable.txt` in the installer payload, 41 PE files resolve their imports,
+smoke `vlib`/`vcom`/`vsim -c` in a minimal environment; Linux `--check` and `--help`, payload checksum, 149 ELF files isolated, minimum glibc 2.38, smoke install, installed GUI
+settings in `HOME/.config`, uninstall leaves `HOME` as before, portable flow with settings in `data/`. Verified by hand afterwards:
+
+* Windows installer, `/VERYSILENT /CURRENTUSER /DIR=<throwaway>`, raw user `PATH` (REG_EXPAND_SZ, 427 characters, read with `DoNotExpandEnvironmentNames`, backed up first to
+  `D:/tmp/userpath_backup_rel015_1215.txt`): (a) `/TASKS="!addtopath,!desktopicon"`: 1074 files, no `portable.txt`, display name `lvdsim 0.1.5 (Current user)`, installed `nvc.exe`
+  SHA-256 equal to `kernel/nvc/build/bin/nvc.exe`, `vlib`, `vlog`, `vlog -sv`, `vcom -2008`, `vsim -c` of `examples/mixed_language` with `PATH` = install folder, `C:\Windows`, `System32`
+  give `events {"00000010"} avg {"00101110"}` (all exit 0); `PATH` unchanged by the install; (b) `/TASKS="addtopath,!desktopicon"`: the raw value after install is exactly the old value plus
+  `;<dir>`. After each uninstall: directory, HKCU uninstall key and Start Menu group gone, raw `PATH` identical to the original (kind and value, byte for byte), `reg query` text identical.
+  The all-users install in `C:\Program Files\lvdsim` and its HKLM key were not touched (still present). Script: `D:/tmp/winverify_rel015_inst.ps1`.
+* Windows zip, unpacked into `D:/tmp/lvdsim_zip015_1220`, the same flow from the same minimal `PATH` (same values), `nvc.exe` SHA-256 equal to the kernel build
+  (`0360515431f3930fdd1809e31e18e1b3f34ecc2be9df7b6b0118a1f7a7d23723`); `lvdsim-gui` offscreen with `-do sim.do work.tb_mixed --screenshot`: Library|Sim|Project tabs over Objects
+  (port icons), live waveform to `Now: 2 us`, Processes|Breakpoints|Call Stack tabs and the Locals dock at the bottom, settings in `data\lvdsim-gui.ini`; a second run with
+  `--send "view memory list coverage"` shows the List and Memory docks tabbed with Source and the Coverage dock tabbed with the Transcript, layout sane. Started on the real
+  windows platform (no offscreen, no `LVDSIM_RENDERER`, no `QT_QPA_FONTDIR`) its screenshot shows `Renderer: GPU`.
+* Linux `.run`: `sha256sum -c` of both files, `--check`, install into a throwaway prefix and `HOME` (`--no-path`), the same flow from `env -i PATH=<prefix>/bin:/usr/bin:/bin`
+  (all exit 0, same values), offscreen GUI screenshot (same layout as on Windows, `Renderer: QPainter (GPU not available: platform offscreen)`), `--uninstall` removes the prefix
+  and `.local` (only `.config/lvdsim/lvdsim.conf` written by the GUI remains). Portable tarball in a clean `HOME`: same flow, bundled nvc reports `53d41eeae`, GUI settings in
+  `data/lvdsim-gui.ini`, `HOME` left empty. Script: `D:/tmp/linverify_rel015.sh`.
+
+Not verified: the Windows installer's installed GUI (same payload as the zip, only the zip GUI was started), all-users install, signing, a real GPU on Linux, Windows 10, other
+distributions. The bundled Linux `nvc` is not byte-identical to the build tree's binary (the bundle script patches ELF files with patchelf), so it was checked by its version line only.
+
+### Release 0.1.5 rebuild (2026-11-14, second build)
+
+Reason: the first 0.1.5 packages predate a number of fixes made the same day: coverage fixes, fixes for transcript hangs, the Break button
+(Ctrl+Break) and the exit dialog, analog virtual buses, row heights, the view declaration, and kernel pull request 10 (`describe -location`,
+`kernel/upstream/10-shell-describe-locations`). The version stays 0.1.5. The first 0.1.5 folders were kept as they were. The tree had uncommitted
+changes, so `git commit` in `build-info.txt` (`5a73a31`) does not describe the sources exactly.
+
+Kernel builds. Windows: `kernel/nvc/build`, `nvc 1.24-devel (53d41eeae) (Using LLVM 23.1.5)`, not rebuilt. No file under `kernel/nvc/src` or `lib` is newer than
+`build/bin/nvc.exe` (14:53). Linux: a new build from the fork tree. `kernel/nvc` was cloned with `core.autocrlf=false` at `53d41eeae` into
+`~/build/nvc-fork-src-rel015b`. Then `git -c core.autocrlf=false diff --binary HEAD` (staged and unstaged together, 141 files, LF only,
+`D:/tmp/nvc-rel015b-wt.patch`) was applied and the 15 untracked files were copied in with CRs stripped (they had none). Twelve files in the Windows checkout
+have CRLF line ends (`i/lf w/crlf`, for example `NEWS.md`, `src/simp.c` and `src/cov/cov-*.c`). Apart from the line ends they equal `HEAD`, so the clone keeps
+the LF blobs. Check: `0b2837794` plus the patches `kernel/upstream/01` to `10` gives the 179 files the patches touch, and all 179 are byte-identical to the new
+source tree. The only other change in that tree is `.gitignore`. The build is `configure --enable-tcl` in `~/build/nvc-fork-linux-rel015b` (Debian LLVM 19.1.7)
+with 0 compiler warnings, and its version line is `nvc 1.24-devel (53d41eeae) (Using LLVM 19.1.7)`. `make check`: regress 1578 ok, unit tests 24 suites,
+1182 checks, 0 failures, 0 errors. Logs: WSL `~/build/nvc-fork-rel015b-{autogen,configure,make,check}.log`.
+
+Tests before packaging. Windows `mingw-debug` (`-Werror`, fresh `build/mingw-debug-rel015b`) passed 333 of 333. Linux Debug with the GUI (fresh
+`~/build/lvdsim-rel015b`, `-Werror`, 0 warnings) passed 334 of 334, with `LVDSIM_NVC`/`LVDSIM_NVC_LIBDIR` set to `~/build/nvc-fork-linux-rel015b`. The one
+extra Linux test is the POSIX-only "Ctrl-C during a child is left to the child". The release builds had no new `-Werror` warnings, and no source change was needed.
+
+| File | Bytes | SHA-256 |
+|------|------:|---------|
+| `lvdsim-0.1.5-win64-setup.exe` | 56 069 940 | `62a90c8a4f69fa4feb52ecf79197e710117b56610950032bbb12f0ee11b812dd` |
+| `lvdsim-0.1.5-win64-portable.zip` | 80 680 956 | `dc589ea30f7112275b3448565934025f0aacd103c8122e92ebb6ddb09ad28121` |
+| `lvdsim-0.1.5-linux-x86_64.run` | 72 454 927 | `1406b13053e39aea93776f5d692da318c68e17a4c49fd2dac33bfcd07661ed8e` |
+| `lvdsim-0.1.5-linux-x86_64-portable.tar.gz` | 106 218 932 | `8398a4a8eb79152b04926e3d040a8e1e681171b02e91957074a8336939533d71` |
+
+Folders: `build/release/0.1.5-20261114-153934` (Windows) and `build/release/linux-0.1.5-20261114-154220` (Linux, copied with `--copy-to-windows`; the originals are in WSL
+`~/build/lvdsim/release/0.1.5-20261114-154220`). Linux nvc: `--nvc-build ~/build/nvc-fork-linux-rel015b`. `build-info.txt` counts the uncommitted kernel changes as
+156 on Windows and 168 on Linux. The Linux count is higher because of file mode noise in the `/mnt/d` checkout. Logs: `D:/tmp/rel015b-{win,lin}-release.log`.
+
+Verified by the scripts: the same checks as for the first 0.1.5 build. Windows: installer 53.5 MB, zip 1074 entries, no `portable.txt` in the installer payload,
+41 PE files resolve their imports, and the smoke run passes. Linux: `--check` and `--help`, payload checksum, 149 ELF files isolated, smoke install, installed GUI,
+uninstall and the portable flow pass. Verified by hand afterwards (every headless GUI start used `--settings FILE`):
+
+* Windows installer, `/VERYSILENT /CURRENTUSER /DIR=<throwaway>`. The raw user `PATH` (REG_EXPAND_SZ, 427 characters, read with `DoNotExpandEnvironmentNames`) was
+  backed up first to `D:/tmp/userpath_backup_rel015b_1545.txt`.
+  (a) `/TASKS="!addtopath,!desktopicon"`: 1074 files, no `portable.txt`, display name `lvdsim 0.1.5 (Current user)`. The installed `nvc.exe` SHA-256 equals
+  `kernel/nvc/build/bin/nvc.exe` (`1694449c29eedf36d427ecff3734f6bdbf7338cab2b307d2f89322d17efe6acc`). `vlib`, `vlog`, `vlog -sv`, `vcom -2008` and `vsim -c` of
+  `examples/mixed_language`, run with `PATH` = install folder, `C:\Windows` and `System32`, give `events {"00000010"} avg {"00101110"}` and all exit 0. The
+  **installed GUI** was started offscreen (`-do sim.do`). Its screenshot shows Library|Sim|Project tabs over Objects with port icons, the live waveform to
+  `Now: 2 us`, the Break button after Run -all on the toolbar (disabled while idle), and Processes|Breakpoints|Call Stack with Locals at the bottom. The
+  install left `PATH` unchanged.
+  (b) `/TASKS="addtopath,!desktopicon"`: after the install the raw value is exactly the old value plus `;<dir>`.
+  After each uninstall, the directory, the HKCU uninstall key and the Start Menu group were gone. The raw `PATH` was identical to the original (kind and value, byte
+  for byte), and the `reg query` text was identical too. `HKCU\Software\lvdsim` was unchanged. The all-users install in `C:\Program Files\lvdsim` and its HKLM key
+  were not touched. Scripts: `D:/tmp/winverify_rel015b_{inst,flow}.ps1`, log `D:/tmp/rel015b-wininst.log`.
+* Windows zip, unpacked into `D:/tmp/lvdsim_zip015b_1546` (`portable.txt` present): the same flow from the same minimal `PATH` gave the same values, and `nvc.exe` is
+  identical to the kernel build. The offscreen GUI screenshot shows the same layout as the installed one. A start on the real windows platform (no offscreen, no
+  `LVDSIM_RENDERER`, no `QT_QPA_FONTDIR`) shows `Renderer: GPU`. Log `D:/tmp/rel015b-winzip.log`.
+* Linux `.run`: `sha256sum -c` of both files and `--check` pass. It was installed into a throwaway prefix and `HOME` with `--no-path`. The same flow from
+  `env -i PATH=<prefix>/bin:/usr/bin:/bin` exits 0 everywhere and gives the same values. The offscreen GUI screenshot has the same layout as on Windows and shows
+  `Renderer: QPainter (GPU not available: platform offscreen)`. `--uninstall` removes the prefix and `.local`, and the `HOME` listing is then identical to the
+  one before the install. Portable tarball in a clean `HOME`: the same flow passes, the bundled nvc reports `53d41eeae`, `HOME` is left empty, and the screenshot
+  is the same. Script: `D:/tmp/linverify_rel015b.sh`, log `D:/tmp/rel015b-linverify.log`, screenshots `D:/tmp/rel015b-lin-{inst,port}-shot.png`.
+
+Not verified: the portable mode's own settings file (`data/lvdsim-gui.ini`) by hand, because `--settings` overrides it; the release scripts checked it on both
+platforms. Also not verified: an all-users install, signing, a real GPU on Linux, Windows 10, and other distributions. The Windows kernel build was not re-run:
+the timestamps show it is current, and a `make -n` only reports the usual automake `stamp-h1`/`config.h` timestamp artefact.
+
 ## Licences in the packages
 
 `licenses/` holds: `lvdsim-GPL-3.0.txt` (lvdsim is GPL-3.0-or-later; same text as NVC's), `NVC-GPL-3.0.txt`, `fstapi-MIT.txt`,

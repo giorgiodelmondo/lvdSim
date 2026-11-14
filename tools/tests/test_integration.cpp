@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // End to end: the real lvdsim-cli drives a real nvc through vlib, vcom and vsim -c.
 #include <catch2/catch_test_macros.hpp>
+#include <coverage.hpp>
 #include <process.hpp>
 
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 
 #ifdef _WIN32
 #include <process.h>
@@ -66,7 +68,8 @@ struct Sandbox {
         std::ofstream(dir / name, std::ios::binary) << text;
     }
 
-    ProcessResult run(const std::string& tool, std::vector<std::string> args) const {
+    ProcessResult run(const std::string& tool, std::vector<std::string> args,
+                      std::vector<std::pair<std::string, std::string>> extraEnv = {}) const {
         std::vector<std::string> argv{LVD_CLI_EXE, tool};
         argv.insert(argv.end(), args.begin(), args.end());
         ProcessOptions o;
@@ -74,6 +77,18 @@ struct Sandbox {
         o.capture = true;
         o.env = {{"LVDSIM_NVC", nvc.exe}, {"LVDSIM_NVC_LIBDIR", nvc.libDir}};
         if (!nvc.dllDir.empty()) o.env.emplace_back("LVDSIM_NVC_DLLDIR", nvc.dllDir);
+        o.env.insert(o.env.end(), extraEnv.begin(), extraEnv.end());
+        return runProcess(argv, o);
+    }
+
+    /// nvc itself (not through the tools), in the sandbox.
+    ProcessResult nvcRun(std::vector<std::string> args) const {
+        std::vector<std::string> argv{nvc.exe, "-L", nvc.libDir};
+        argv.insert(argv.end(), args.begin(), args.end());
+        ProcessOptions o;
+        o.workingDir = dir.string();
+        o.capture = true;
+        if (!nvc.dllDir.empty()) o.pathPrepend.push_back(nvc.dllDir);
         return runProcess(argv, o);
     }
 };
@@ -381,4 +396,146 @@ endmodule
     auto missing = sb.run("vsim", {"-c", "-do", "run 5 ns", "top"});
     REQUIRE(missing.exitCode != 0);  // without -L the module cannot be found
     REQUIRE(missing.output.find("leaf") != std::string::npos);
+}
+
+TEST_CASE("generic overrides reach the elaboration") {
+    Sandbox sb;
+    REQUIRE_NVC(sb);
+    sb.write("g.vhd", R"(
+entity leaf is generic (WIDTH : integer := 4); end;
+architecture a of leaf is
+  signal w : integer := WIDTH;
+begin
+end;
+entity tb is generic (BUG : integer := 0; MSG : string := "none"; V : bit_vector(7 downto 0) := x"00"); end;
+architecture a of tb is
+  signal bug_s : integer := BUG;
+  signal v_s : bit_vector(7 downto 0) := V;
+begin
+  u : entity work.leaf;
+  e : entity work.leaf generic map (WIDTH => 2);
+  process begin
+    report "MSG=<" & MSG & ">";
+    assert BUG = 0 report "bug mode" severity failure;
+    wait;
+  end process;
+end;
+)");
+    REQUIRE(sb.run("vlib", {"work"}).exitCode == 0);
+    auto com = sb.run("vcom", {"-2008", "g.vhd"});
+    INFO(com.output);
+    REQUIRE(com.exitCode == 0);
+    const std::string show = "run 1 ns; puts \"bug=[examine /bug_s] u=[examine /u/w] e=[examine /e/w] "
+                             "v=[examine /v_s]\"; quit -f";
+
+    SECTION("defaults without overrides") {
+        auto r = sb.run("vsim", {"-c", "-do", show, "work.tb"});
+        INFO(r.output);
+        REQUIRE(r.exitCode == 0);
+        REQUIRE(r.output.find("bug=0 u=4 e=2") != std::string::npos);
+        REQUIRE(r.output.find("MSG=<none>") != std::string::npos);
+    }
+    SECTION("-gBUG=1 changes the behaviour of the testbench") {
+        auto r = sb.run("vsim", {"-c", "-gBUG=1", "-do", "run 1 ns; quit -f", "work.tb"});
+        INFO(r.output);
+        REQUIRE(r.output.find("not supported") == std::string::npos);
+        REQUIRE(r.output.find("bug mode") != std::string::npos);
+    }
+    SECTION("hierarchical names, -G over an explicit generic map, strings with spaces and quotes, based literals") {
+        auto r = sb.run("vsim", {"-c", "-g/tb/u/WIDTH=8", "-G/tb/e/WIDTH=16#10#", "-gMSG=\"hello world\"", "-gV=x\"A5\"",
+                                 "-do", show, "work.tb"});
+        INFO(r.output);
+        REQUIRE(r.exitCode == 0);
+        REQUIRE(r.output.find("u=8 e=16") != std::string::npos);
+        REQUIRE(r.output.find("MSG=<hello world>") != std::string::npos);
+        REQUIRE(r.output.find("10100101") != std::string::npos);
+    }
+    SECTION("a plain -g sets instances without a generic map value, -G sets every instance") {
+        auto g = sb.run("vsim", {"-c", "-gWIDTH=7", "-do", show, "work.tb"});
+        INFO(g.output);
+        REQUIRE(g.exitCode == 0);
+        REQUIRE(g.output.find("u=7 e=2") != std::string::npos);
+        auto big = sb.run("vsim", {"-c", "-GWIDTH=9", "-do", show, "work.tb"});
+        INFO(big.output);
+        REQUIRE(big.exitCode == 0);
+        REQUIRE(big.output.find("u=9 e=9") != std::string::npos);
+    }
+    SECTION("a path through a generate statement names one iteration") {
+        sb.write("gen.vhd", R"(
+entity gtb is end;
+architecture a of gtb is
+begin
+  g : for i in 1 to 2 generate
+    u : entity work.leaf;
+  end generate;
+end;
+)");
+        REQUIRE(sb.run("vcom", {"-2008", "gen.vhd"}).exitCode == 0);
+        auto r = sb.run("vsim", {"-c", "-g/gtb/g(2)/u/WIDTH=5", "-do",
+                                 "run 1 ns; puts \"w=[examine /g(1)/u/w] [examine /g(2)/u/w]\"; quit -f", "work.gtb"});
+        INFO(r.output);
+        REQUIRE(r.exitCode == 0);
+        REQUIRE(r.output.find("w=4 5") != std::string::npos);
+    }
+    SECTION("a value of the wrong type fails the elaboration") {
+        auto r = sb.run("vsim", {"-c", "-gBUG=abc", "-do", "quit -f", "work.tb"});
+        INFO(r.output);
+        REQUIRE(r.exitCode != 0);
+        REQUIRE(r.output.find("BUG") != std::string::npos);
+    }
+}
+
+TEST_CASE("vsim -coverage writes a coverage database") {
+    // Only that the database is written and can be exported: whether the Tcl shell stores the run-time counts
+    // is checked by coverage_integration_tests.
+    Sandbox sb;
+    REQUIRE_NVC(sb);
+    sb.write("u.vhd", kFinite);
+    REQUIRE(sb.run("vlib", {"work"}).exitCode == 0);
+
+    auto com = sb.run("vcom", {"-2008", "+cover=sbf", "u.vhd"});
+    INFO(com.output);
+    REQUIRE(com.exitCode == 0);
+    REQUIRE(com.output.find("Warning") == std::string::npos);
+    REQUIRE(com.output.find("vsim -coverage -lvdcover sbf") != std::string::npos);  // the note says where it goes
+
+    const std::vector<std::pair<std::string, std::string>> oneThread = {{"NVC_MAX_THREADS", "1"}};
+    auto exportDb = [&](const std::string& db) {
+        const std::string xml = db + ".xml";
+        const auto r = sb.nvcRun(cov::exportArgs({(sb.dir / db).generic_string()}, (sb.dir / xml).generic_string()));
+        INFO(r.output);
+        REQUIRE(r.exitCode == 0);
+        std::ifstream in(sb.dir / xml, std::ios::binary);
+        std::stringstream ss;
+        ss << in.rdbuf();
+        return cov::parseExportXml(ss.str());
+    };
+
+    SECTION("every kind into <top>.ncdb") {
+        auto r = sb.run("vsim", {"-c", "-coverage", "-do", "run -all; quit", "work.u"}, oneThread);
+        INFO(r.output);
+        REQUIRE(r.exitCode == 0);
+        REQUIRE(fs::exists(sb.dir / "u.ncdb"));
+        const cov::ParseResult x = exportDb("u.ncdb");
+        REQUIRE(x.ok());
+        CHECK(x.db.totals().has(cov::Kind::Statement));
+        CHECK(x.db.findScope("/u") >= 0);
+    }
+    SECTION("chosen kinds into a named database") {
+        auto r = sb.run("vsim", {"-c", "-coverage", "-lvdcover", "b", "-lvdcoverfile", "only_branch.ncdb", "-do",
+                                 "run -all; quit", "u"},
+                        oneThread);
+        INFO(r.output);
+        REQUIRE(r.exitCode == 0);
+        REQUIRE_FALSE(fs::exists(sb.dir / "u.ncdb"));
+        REQUIRE(fs::exists(sb.dir / "only_branch.ncdb"));
+        const cov::ParseResult x = exportDb("only_branch.ncdb");
+        REQUIRE(x.ok());
+        CHECK_FALSE(x.db.totals().has(cov::Kind::Statement));
+    }
+    SECTION("no database without -coverage") {
+        auto r = sb.run("vsim", {"-c", "-do", "run -all; quit", "u"}, oneThread);
+        REQUIRE(r.exitCode == 0);
+        REQUIRE_FALSE(fs::exists(sb.dir / "u.ncdb"));
+    }
 }

@@ -3,6 +3,8 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
+#include <cstring>
 
 namespace lvd::wave {
 
@@ -15,7 +17,8 @@ Signal::Signal(std::string name, ScopeId scope, SignalKind kind, std::uint32_t w
 
 std::size_t Signal::holdIndex(Time t) const noexcept {
     auto it = std::upper_bound(times_.begin(), times_.end(), t);
-    if (it == times_.begin()) return kNoIndex;
+    if (it == times_.begin())
+        return kNoIndex;
     return static_cast<std::size_t>(it - times_.begin()) - 1;
 }
 
@@ -26,7 +29,8 @@ std::pair<std::size_t, std::size_t> Signal::changesIn(Time t0, Time t1) const no
 }
 
 Logic Signal::bit(std::size_t change, std::uint32_t bitIndex) const noexcept {
-    if (width_ == 1) return static_cast<Logic>(scalar_[change]);
+    if (width_ == 1)
+        return static_cast<Logic>(scalar_[change]);
     const std::size_t base = change * bytesPerChange();
     const std::uint8_t byte = packed_[base + bitIndex / 2];
     return static_cast<Logic>((bitIndex & 1u) ? (byte >> 4) : (byte & 0xFu));
@@ -34,8 +38,24 @@ Logic Signal::bit(std::size_t change, std::uint32_t bitIndex) const noexcept {
 
 std::string Signal::bits(std::size_t change) const {
     std::string s(width_, '0');
-    for (std::uint32_t i = 0; i < width_; ++i) s[width_ - 1 - i] = toChar(bit(change, i));
+    for (std::uint32_t i = 0; i < width_; ++i)
+        s[width_ - 1 - i] = toChar(bit(change, i));
     return s;
+}
+
+bool Signal::sameValue(std::size_t a, std::size_t b) const noexcept {
+    switch (kind_) {
+    case SignalKind::Real:
+        return reals_[a] == reals_[b] || (std::isnan(reals_[a]) && std::isnan(reals_[b]));
+    case SignalKind::String:
+        return textIds_[a] == textIds_[b];
+    case SignalKind::Logic:
+        break;
+    }
+    if (width_ == 1)
+        return scalar_[a] == scalar_[b];
+    const std::size_t n = bytesPerChange();
+    return std::memcmp(&packed_[a * n], &packed_[b * n], n) == 0;
 }
 
 void Signal::setNibble(std::size_t byteBase, std::uint32_t bitIndex, Logic v) noexcept {
@@ -62,7 +82,8 @@ void Signal::appendLogic(Time t, std::string_view msbFirst) {
     Logic pad = Logic::L0;
     if (!msbFirst.empty()) {
         const Logic lead = fromChar(msbFirst.front());
-        if (lead == Logic::X || lead == Logic::Z || lead == Logic::U) pad = lead;
+        if (lead == Logic::X || lead == Logic::Z || lead == Logic::U)
+            pad = lead;
     }
 
     const std::size_t n = msbFirst.size();
@@ -96,11 +117,13 @@ void Signal::appendText(Time t, std::string_view s) {
 
 std::vector<std::size_t> Signal::bitChanges(std::uint32_t bitIndex) const {
     std::vector<std::size_t> out;
-    if (kind_ != SignalKind::Logic || bitIndex >= width_) return out;
+    if (kind_ != SignalKind::Logic || bitIndex >= width_)
+        return out;
     Logic prev = Logic::L0;
     for (std::size_t i = 0; i < times_.size(); ++i) {
         const Logic v = bit(i, bitIndex);
-        if (i == 0 || v != prev) out.push_back(i);
+        if (i == 0 || v != prev)
+            out.push_back(i);
         prev = v;
     }
     return out;
@@ -113,7 +136,9 @@ std::size_t Signal::memoryBytes() const noexcept {
 
 // ---------------------------------------------------------------------------------------------
 
-WaveStore::WaveStore() { scopes_.push_back(Scope{}); }
+WaveStore::WaveStore() {
+    scopes_.push_back(Scope{});
+}
 
 ScopeId WaveStore::addScope(ScopeId parent, std::string name, int type) {
     const auto id = static_cast<ScopeId>(scopes_.size());
@@ -151,15 +176,21 @@ SignalId WaveStore::resolve(SignalId id) const noexcept {
     return a == kNoSignal ? id : a;
 }
 
-const Signal& WaveStore::signal(SignalId id) const { return signals_[resolve(id)]; }
-Signal& WaveStore::mutableSignal(SignalId id) { return signals_[resolve(id)]; }
+const Signal& WaveStore::signal(SignalId id) const {
+    return signals_[resolve(id)];
+}
+Signal& WaveStore::mutableSignal(SignalId id) {
+    return signals_[resolve(id)];
+}
 
 std::string WaveStore::scopePath(ScopeId id) const {
     std::vector<const std::string*> parts;
-    for (ScopeId s = id; s != kRootScope; s = scopes_[s].parent) parts.push_back(&scopes_[s].name);
+    for (ScopeId s = id; s != kRootScope; s = scopes_[s].parent)
+        parts.push_back(&scopes_[s].name);
     std::string out;
     for (auto it = parts.rbegin(); it != parts.rend(); ++it) {
-        if (!out.empty()) out += '.';
+        if (!out.empty())
+            out += '.';
         out += **it;
     }
     return out;
@@ -167,7 +198,8 @@ std::string WaveStore::scopePath(ScopeId id) const {
 
 std::string WaveStore::pathOf(SignalId id) const {
     std::string p = scopePath(signals_[id].scope());
-    if (!p.empty()) p += '.';
+    if (!p.empty())
+        p += '.';
     p += signals_[id].name();
     return p;
 }
@@ -176,7 +208,8 @@ SignalId WaveStore::findSignal(std::string_view path) const {
     if (!pathIndexValid_) {
         pathIndex_.clear();
         pathIndex_.reserve(signals_.size());
-        for (SignalId i = 0; i < signals_.size(); ++i) pathIndex_.emplace(pathOf(i), i);
+        for (SignalId i = 0; i < signals_.size(); ++i)
+            pathIndex_.emplace(pathOf(i), i);
         pathIndexValid_ = true;
     }
     auto it = pathIndex_.find(std::string(path));
@@ -195,6 +228,24 @@ ScopeId WaveStore::findScope(std::string_view path) const {
     return it == scopeIndex_.end() ? kNoScope : it->second;
 }
 
+void Signal::clearChanges() {
+    times_.clear();
+    scalar_.clear();
+    packed_.clear();
+    reals_.clear();
+    textIds_.clear();
+    table_.clear();
+    tableIndex_.clear();
+    ++generation_;
+}
+
+void WaveStore::clearValues() {
+    for (Signal& s : signals_)
+        s.clearChanges();
+    start_ = end_ = 0;
+    haveTime_ = false;
+}
+
 void WaveStore::extendTimeRange(Time t) noexcept {
     if (!haveTime_) {
         start_ = end_ = t;
@@ -208,14 +259,16 @@ void WaveStore::extendTimeRange(Time t) noexcept {
 std::uint64_t WaveStore::totalChanges() const noexcept {
     std::uint64_t n = 0;
     for (const Signal& s : signals_)
-        if (s.aliasOf() == kNoSignal) n += s.changeCount();
+        if (s.aliasOf() == kNoSignal)
+            n += s.changeCount();
     return n;
 }
 
 std::size_t WaveStore::memoryBytes() const noexcept {
     std::size_t n = 0;
-    for (const Signal& s : signals_) n += s.memoryBytes();
+    for (const Signal& s : signals_)
+        n += s.memoryBytes();
     return n;
 }
 
-}  // namespace lvd::wave
+} // namespace lvd::wave

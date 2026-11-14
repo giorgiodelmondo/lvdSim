@@ -6,6 +6,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #else
+#include <csignal>
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -17,8 +18,24 @@ namespace lvd::tools {
 
 namespace {
 
+// Ctrl-C and Ctrl-Break go to every process of the console. While runProcess waits, the child decides what
+// they mean (nvc ends a run of its shell, see docs/protocol.md "Interrupting a run"); this process must not
+// end and leave it running. A handler, not SetConsoleCtrlHandler(nullptr, TRUE), which children would
+// inherit.
+BOOL WINAPI ignoreConsoleBreak(DWORD type) {
+    return type == CTRL_C_EVENT || type == CTRL_BREAK_EVENT;
+}
+
+struct ConsoleBreakGuard {
+    ConsoleBreakGuard() { SetConsoleCtrlHandler(ignoreConsoleBreak, TRUE); }
+    ~ConsoleBreakGuard() { SetConsoleCtrlHandler(ignoreConsoleBreak, FALSE); }
+    ConsoleBreakGuard(const ConsoleBreakGuard&) = delete;
+    ConsoleBreakGuard& operator=(const ConsoleBreakGuard&) = delete;
+};
+
 std::wstring widen(const std::string& s) {
-    if (s.empty()) return {};
+    if (s.empty())
+        return {};
     const int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0);
     std::wstring w(static_cast<std::size_t>(n), L'\0');
     MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), w.data(), n);
@@ -27,7 +44,8 @@ std::wstring widen(const std::string& s) {
 
 // Quoting rules of CommandLineToArgvW / the MSVC runtime.
 std::wstring quoteArg(const std::wstring& a) {
-    if (!a.empty() && a.find_first_of(L" \t\n\v\"") == std::wstring::npos) return a;
+    if (!a.empty() && a.find_first_of(L" \t\n\v\"") == std::wstring::npos)
+        return a;
     std::wstring r = L"\"";
     for (std::size_t i = 0;; ++i) {
         std::size_t backslashes = 0;
@@ -87,7 +105,7 @@ private:
     std::vector<Saved> saved_;
 };
 
-}  // namespace
+} // namespace
 
 ProcessResult runProcess(const std::vector<std::string>& argv, const ProcessOptions& options) {
     ProcessResult result;
@@ -97,18 +115,21 @@ ProcessResult runProcess(const std::vector<std::string>& argv, const ProcessOpti
     }
 
     EnvGuard guard;
-    for (const auto& [k, v] : options.env) guard.set(widen(k), widen(v));
+    for (const auto& [k, v] : options.env)
+        guard.set(widen(k), widen(v));
     if (!options.pathPrepend.empty()) {
         bool had = false;
         const std::wstring old = getEnv(L"PATH", &had);
         std::wstring path;
-        for (const std::string& d : options.pathPrepend) path += widen(d) + L";";
+        for (const std::string& d : options.pathPrepend)
+            path += widen(d) + L";";
         guard.set(L"PATH", path + old);
     }
 
     std::wstring cmd;
     for (std::size_t i = 0; i < argv.size(); ++i) {
-        if (i != 0) cmd += L' ';
+        if (i != 0)
+            cmd += L' ';
         cmd += quoteArg(widen(argv[i]));
     }
 
@@ -133,11 +154,14 @@ ProcessResult runProcess(const std::vector<std::string>& argv, const ProcessOpti
 
     PROCESS_INFORMATION pi{};
     const std::wstring cwd = widen(options.workingDir);
+    const ConsoleBreakGuard ignoreBreaks;
     const BOOL ok = CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, TRUE, 0, nullptr,
                                    cwd.empty() ? nullptr : cwd.c_str(), &si, &pi);
-    if (writeEnd != nullptr) CloseHandle(writeEnd);
+    if (writeEnd != nullptr)
+        CloseHandle(writeEnd);
     if (!ok) {
-        if (readEnd != nullptr) CloseHandle(readEnd);
+        if (readEnd != nullptr)
+            CloseHandle(readEnd);
         result.error = "cannot start '" + argv[0] + "' (error " + std::to_string(GetLastError()) + ")";
         return result;
     }
@@ -146,7 +170,8 @@ ProcessResult runProcess(const std::vector<std::string>& argv, const ProcessOpti
     if (readEnd != nullptr) {
         char buf[4096];
         DWORD n = 0;
-        while (ReadFile(readEnd, buf, sizeof buf, &n, nullptr) && n > 0) result.output.append(buf, n);
+        while (ReadFile(readEnd, buf, sizeof buf, &n, nullptr) && n > 0)
+            result.output.append(buf, n);
         CloseHandle(readEnd);
     }
     WaitForSingleObject(pi.hProcess, INFINITE);
@@ -158,17 +183,141 @@ ProcessResult runProcess(const std::vector<std::string>& argv, const ProcessOpti
     return result;
 }
 
+ChildProcess::~ChildProcess() {
+    if (started_ && !ended_)
+        kill();
+    if (process_ != nullptr)
+        CloseHandle(static_cast<HANDLE>(process_));
+    if (job_ != nullptr)
+        CloseHandle(static_cast<HANDLE>(job_));
+}
+
+bool ChildProcess::start(const std::vector<std::string>& argv, const ProcessOptions& options,
+                         const std::string& outputFile, std::string* error) {
+    if (argv.empty() || started_) {
+        *error = argv.empty() ? "empty command" : "already started";
+        return false;
+    }
+    EnvGuard guard;
+    for (const auto& [k, v] : options.env)
+        guard.set(widen(k), widen(v));
+    if (!options.pathPrepend.empty()) {
+        bool had = false;
+        const std::wstring old = getEnv(L"PATH", &had);
+        std::wstring path;
+        for (const std::string& d : options.pathPrepend)
+            path += widen(d) + L";";
+        guard.set(L"PATH", path + old);
+    }
+    std::wstring cmd;
+    for (std::size_t i = 0; i < argv.size(); ++i) {
+        if (i != 0)
+            cmd += L' ';
+        cmd += quoteArg(widen(argv[i]));
+    }
+
+    SECURITY_ATTRIBUTES sa{sizeof sa, nullptr, TRUE};
+    HANDLE out = CreateFileW(widen(outputFile).c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                             &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (out == INVALID_HANDLE_VALUE) {
+        *error = "cannot write '" + outputFile + "'";
+        return false;
+    }
+    HANDLE in =
+        CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa, OPEN_EXISTING, 0, nullptr);
+
+    STARTUPINFOW si{};
+    si.cb = sizeof si;
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdInput = in;
+    si.hStdOutput = out;
+    si.hStdError = out;
+    PROCESS_INFORMATION pi{};
+    const std::wstring cwd = widen(options.workingDir);
+    const BOOL ok =
+        CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, TRUE, CREATE_SUSPENDED | CREATE_NO_WINDOW,
+                       nullptr, cwd.empty() ? nullptr : cwd.c_str(), &si, &pi);
+    CloseHandle(out);
+    if (in != INVALID_HANDLE_VALUE)
+        CloseHandle(in);
+    if (!ok) {
+        *error = "cannot start '" + argv[0] + "' (error " + std::to_string(GetLastError()) + ")";
+        return false;
+    }
+    // A job object, so that kill() also ends what the child started.
+    HANDLE job = CreateJobObjectW(nullptr, nullptr);
+    if (job != nullptr) {
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION info{};
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        SetInformationJobObject(job, JobObjectExtendedLimitInformation, &info, sizeof info);
+        if (!AssignProcessToJobObject(job, pi.hProcess)) {
+            CloseHandle(job);
+            job = nullptr;
+        }
+    }
+    ResumeThread(pi.hThread);
+    CloseHandle(pi.hThread);
+    process_ = pi.hProcess;
+    job_ = job;
+    started_ = true;
+    return true;
+}
+
+bool ChildProcess::poll() {
+    if (!started_ || ended_)
+        return true;
+    if (WaitForSingleObject(static_cast<HANDLE>(process_), 0) != WAIT_OBJECT_0)
+        return false;
+    DWORD code = 0;
+    GetExitCodeProcess(static_cast<HANDLE>(process_), &code);
+    exitCode_ = static_cast<int>(code);
+    ended_ = true;
+    return true;
+}
+
+void ChildProcess::kill() {
+    if (!started_ || ended_)
+        return;
+    if (job_ != nullptr)
+        TerminateJobObject(static_cast<HANDLE>(job_), 1);
+    else
+        TerminateProcess(static_cast<HANDLE>(process_), 1);
+    WaitForSingleObject(static_cast<HANDLE>(process_), 5000);
+    exitCode_ = -1;
+    ended_ = true;
+}
+
 std::string executablePath() {
     wchar_t buf[MAX_PATH * 4];
     const DWORD n = GetModuleFileNameW(nullptr, buf, static_cast<DWORD>(sizeof buf / sizeof buf[0]));
-    if (n == 0) return {};
+    if (n == 0)
+        return {};
     const int len = WideCharToMultiByte(CP_UTF8, 0, buf, static_cast<int>(n), nullptr, 0, nullptr, nullptr);
     std::string out(static_cast<std::size_t>(len), '\0');
     WideCharToMultiByte(CP_UTF8, 0, buf, static_cast<int>(n), out.data(), len, nullptr, nullptr);
     return out;
 }
 
-#else  // POSIX
+#else // POSIX
+
+namespace {
+
+// As system(): the parent ignores SIGINT while it waits, the child (which keeps the default) decides what it
+// means (nvc ends a run of its shell); this process must not end and leave it running.
+struct SigintGuard {
+    struct sigaction old {};
+    SigintGuard() {
+        struct sigaction ign {};
+        ign.sa_handler = SIG_IGN;
+        sigemptyset(&ign.sa_mask);
+        sigaction(SIGINT, &ign, &old);
+    }
+    ~SigintGuard() { sigaction(SIGINT, &old, nullptr); }
+    SigintGuard(const SigintGuard&) = delete;
+    SigintGuard& operator=(const SigintGuard&) = delete;
+};
+
+} // namespace
 
 ProcessResult runProcess(const std::vector<std::string>& argv, const ProcessOptions& options) {
     ProcessResult result;
@@ -202,29 +351,36 @@ ProcessResult runProcess(const std::vector<std::string>& argv, const ProcessOpti
             close(fds[0]);
             close(fds[1]);
         }
-        if (!options.workingDir.empty() && chdir(options.workingDir.c_str()) != 0) _exit(126);
-        for (const auto& [k, v] : options.env) setenv(k.c_str(), v.c_str(), 1);
+        if (!options.workingDir.empty() && chdir(options.workingDir.c_str()) != 0)
+            _exit(126);
+        for (const auto& [k, v] : options.env)
+            setenv(k.c_str(), v.c_str(), 1);
         if (!options.pathPrepend.empty()) {
             std::string path;
-            for (const std::string& d : options.pathPrepend) path += d + ":";
-            if (const char* old = getenv("PATH")) path += old;
+            for (const std::string& d : options.pathPrepend)
+                path += d + ":";
+            if (const char* old = getenv("PATH"))
+                path += old;
             setenv("PATH", path.c_str(), 1);
         }
         std::vector<char*> args;
-        for (const std::string& a : argv) args.push_back(const_cast<char*>(a.c_str()));
+        for (const std::string& a : argv)
+            args.push_back(const_cast<char*>(a.c_str()));
         args.push_back(nullptr);
         execvp(args[0], args.data());
         const char c = 1;
-        (void)!write(errPipe[1], &c, 1);  // tell the parent that exec failed
+        (void)!write(errPipe[1], &c, 1); // tell the parent that exec failed
         _exit(127);
     }
 
+    const SigintGuard ignoreSigint; // set after fork: the child keeps its own disposition
     close(errPipe[1]);
     if (options.capture) {
         close(fds[1]);
         char buf[4096];
         ssize_t n;
-        while ((n = read(fds[0], buf, sizeof buf)) > 0) result.output.append(buf, static_cast<std::size_t>(n));
+        while ((n = read(fds[0], buf, sizeof buf)) > 0)
+            result.output.append(buf, static_cast<std::size_t>(n));
         close(fds[0]);
     }
     char flag;
@@ -238,17 +394,118 @@ ProcessResult runProcess(const std::vector<std::string>& argv, const ProcessOpti
         return result;
     }
     result.started = true;
-    result.exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : 128 + (WIFSIGNALED(status) ? WTERMSIG(status) : 0);
+    result.exitCode =
+        WIFEXITED(status) ? WEXITSTATUS(status) : 128 + (WIFSIGNALED(status) ? WTERMSIG(status) : 0);
     return result;
+}
+
+ChildProcess::~ChildProcess() {
+    if (started_ && !ended_)
+        kill();
+}
+
+bool ChildProcess::start(const std::vector<std::string>& argv, const ProcessOptions& options,
+                         const std::string& outputFile, std::string* error) {
+    if (argv.empty() || started_) {
+        *error = argv.empty() ? "empty command" : "already started";
+        return false;
+    }
+    const int out = open(outputFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+    if (out < 0) {
+        *error = "cannot write '" + outputFile + "'";
+        return false;
+    }
+    int errPipe[2];
+    if (pipe2(errPipe, O_CLOEXEC) != 0) {
+        close(out);
+        *error = "pipe failed";
+        return false;
+    }
+    const pid_t pid = fork();
+    if (pid < 0) {
+        close(out);
+        close(errPipe[0]);
+        close(errPipe[1]);
+        *error = "fork failed";
+        return false;
+    }
+    if (pid == 0) {
+        setpgid(0, 0); // own process group: kill() ends the child's children too
+        const int in = open("/dev/null", O_RDONLY);
+        if (in >= 0)
+            dup2(in, STDIN_FILENO);
+        dup2(out, STDOUT_FILENO);
+        dup2(out, STDERR_FILENO);
+        if (!options.workingDir.empty() && chdir(options.workingDir.c_str()) != 0)
+            _exit(126);
+        for (const auto& [k, v] : options.env)
+            setenv(k.c_str(), v.c_str(), 1);
+        if (!options.pathPrepend.empty()) {
+            std::string path;
+            for (const std::string& d : options.pathPrepend)
+                path += d + ":";
+            if (const char* old = getenv("PATH"))
+                path += old;
+            setenv("PATH", path.c_str(), 1);
+        }
+        std::vector<char*> args;
+        for (const std::string& a : argv)
+            args.push_back(const_cast<char*>(a.c_str()));
+        args.push_back(nullptr);
+        execvp(args[0], args.data());
+        const char c = 1;
+        (void)!write(errPipe[1], &c, 1);
+        _exit(127);
+    }
+    setpgid(pid, pid);
+    close(out);
+    close(errPipe[1]);
+    char flag;
+    const bool execFailed = read(errPipe[0], &flag, 1) == 1;
+    close(errPipe[0]);
+    if (execFailed) {
+        int status = 0;
+        waitpid(pid, &status, 0);
+        *error = "cannot start '" + argv[0] + "'";
+        return false;
+    }
+    pid_ = pid;
+    started_ = true;
+    return true;
+}
+
+bool ChildProcess::poll() {
+    if (!started_ || ended_)
+        return true;
+    int status = 0;
+    const pid_t r = waitpid(pid_, &status, WNOHANG);
+    if (r == 0)
+        return false;
+    exitCode_ = r == pid_ && WIFEXITED(status) ? WEXITSTATUS(status)
+                                               : 128 + (WIFSIGNALED(status) ? WTERMSIG(status) : 0);
+    ended_ = true;
+    return true;
+}
+
+void ChildProcess::kill() {
+    if (!started_ || ended_)
+        return;
+    ::kill(-pid_, SIGKILL);
+    ::kill(pid_, SIGKILL);
+    int status = 0;
+    waitpid(pid_, &status, 0);
+    exitCode_ = -1;
+    ended_ = true;
 }
 
 std::string executablePath() {
     char buf[4096];
     const ssize_t n = readlink("/proc/self/exe", buf, sizeof buf - 1);
-    if (n <= 0) return {};
+    if (n <= 0)
+        return {};
     return std::string(buf, static_cast<std::size_t>(n));
 }
 
 #endif
 
-}  // namespace lvd::tools
+} // namespace lvd::tools

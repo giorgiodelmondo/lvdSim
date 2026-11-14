@@ -1,0 +1,372 @@
+<?xml version="1.0"?>
+<scope name="WORK">
+  <scope name="COV_TB" block_name="COV_TB-TEST" file="cov_design.vhd" line="59">
+    <scope name="CLK" line="60">
+      <toggle hier="WORK.COV_TB.CLK.BIN_0_TO_1" data="23"/>
+      <toggle hier="WORK.COV_TB.CLK.BIN_1_TO_0" data="22"/>
+    </scope>
+    <scope name="RST" line="61">
+      <toggle hier="WORK.COV_TB.RST.BIN_0_TO_1" data="0"/>
+      <toggle hier="WORK.COV_TB.RST.BIN_1_TO_0" data="1"/>
+    </scope>
+    <scope name="EN" line="62">
+      <toggle hier="WORK.COV_TB.EN.BIN_0_TO_1" data="1"/>
+      <toggle hier="WORK.COV_TB.EN.BIN_1_TO_0" data="0"/>
+    </scope>
+    <scope name="IDLE_R" line="63">
+      <toggle hier="WORK.COV_TB.IDLE_R.BIN_0_TO_1" data="0"/>
+      <toggle hier="WORK.COV_TB.IDLE_R.BIN_1_TO_0" data="0"/>
+    </scope>
+    <scope name="C1" line="64">
+      <toggle hier="WORK.COV_TB.C1(3).BIN_0_TO_1" data="1"/>
+      <toggle hier="WORK.COV_TB.C1(3).BIN_1_TO_0" data="1"/>
+      <toggle hier="WORK.COV_TB.C1(2).BIN_0_TO_1" data="2"/>
+      <toggle hier="WORK.COV_TB.C1(2).BIN_1_TO_0" data="2"/>
+      <toggle hier="WORK.COV_TB.C1(1).BIN_0_TO_1" data="5"/>
+      <toggle hier="WORK.COV_TB.C1(1).BIN_1_TO_0" data="4"/>
+      <toggle hier="WORK.COV_TB.C1(0).BIN_0_TO_1" data="9"/>
+      <toggle hier="WORK.COV_TB.C1(0).BIN_1_TO_0" data="9"/>
+    </scope>
+    <scope name="C2" line="64">
+      <toggle hier="WORK.COV_TB.C2(3).BIN_0_TO_1" data="0"/>
+      <toggle hier="WORK.COV_TB.C2(3).BIN_1_TO_0" data="0"/>
+      <toggle hier="WORK.COV_TB.C2(2).BIN_0_TO_1" data="0"/>
+      <toggle hier="WORK.COV_TB.C2(2).BIN_1_TO_0" data="0"/>
+      <toggle hier="WORK.COV_TB.C2(1).BIN_0_TO_1" data="0"/>
+      <toggle hier="WORK.COV_TB.C2(1).BIN_1_TO_0" data="0"/>
+      <toggle hier="WORK.COV_TB.C2(0).BIN_0_TO_1" data="0"/>
+      <toggle hier="WORK.COV_TB.C2(0).BIN_1_TO_0" data="0"/>
+    </scope>
+    <scope name="W1" line="65">
+      <toggle hier="WORK.COV_TB.W1.BIN_0_TO_1" data="1"/>
+      <toggle hier="WORK.COV_TB.W1.BIN_1_TO_0" data="1"/>
+    </scope>
+    <scope name="W2" line="65">
+      <toggle hier="WORK.COV_TB.W2.BIN_0_TO_1" data="0"/>
+      <toggle hier="WORK.COV_TB.W2.BIN_1_TO_0" data="0"/>
+    </scope>
+    <scope name="_P0" line="68">
+      <scope name="_S0">
+        <statement hier="WORK.COV_TB._P0._S0" data="47"/>
+        <scope name="_B0">
+          <expression hier="WORK.COV_TB._P0._S0._B0._E0.BIN_FALSE" data="2"/>
+          <expression hier="WORK.COV_TB._P0._S0._B0._E0.BIN_TRUE" data="45"/>
+          <branch hier="WORK.COV_TB._P0._S0._B0.BIN_TRUE" data="45"/>
+          <branch hier="WORK.COV_TB._P0._S0._B0.BIN_FALSE" data="2"/>
+          <scope name="_S0">
+            <statement hier="WORK.COV_TB._P0._S0._B0._S0" data="45"/>
+          </scope>
+        </scope>
+      </scope>
+    </scope>
+    <scope name="STIM" line="76">
+      <scope name="_S0" line="78">
+        <statement hier="WORK.COV_TB.STIM._S0" data="1"/>
+      </scope>
+      <scope name="_S1" line="79">
+        <statement hier="WORK.COV_TB.STIM._S1" data="1"/>
+      </scope>
+      <scope name="_S2" line="80">
+        <statement hier="WORK.COV_TB.STIM._S2" data="1"/>
+      </scope>
+      <scope name="_S3" line="81">
+        <statement hier="WORK.COV_TB.STIM._S3" data="1"/>
+      </scope>
+      <scope name="_S4" line="82">
+        <statement hier="WORK.COV_TB.STIM._S4" data="1"/>
+      </scope>
+      <scope name="_S5" line="83">
+        <statement hier="WORK.COV_TB.STIM._S5" data="1"/>
+      </scope>
+      <scope name="_S6" line="84">
+        <statement hier="WORK.COV_TB.STIM._S6" data="1"/>
+      </scope>
+    </scope>
+    <scope name="U_BUSY" block_name="COV_COUNTER-RTL" line="70">
+      <scope name="CLK" line="10">
+        <toggle hier="WORK.COV_TB.U_BUSY.CLK.BIN_0_TO_1" data="23"/>
+        <toggle hier="WORK.COV_TB.U_BUSY.CLK.BIN_1_TO_0" data="22"/>
+      </scope>
+      <scope name="RST" line="11">
+        <toggle hier="WORK.COV_TB.U_BUSY.RST.BIN_0_TO_1" data="0"/>
+        <toggle hier="WORK.COV_TB.U_BUSY.RST.BIN_1_TO_0" data="1"/>
+      </scope>
+      <scope name="EN" line="12">
+        <toggle hier="WORK.COV_TB.U_BUSY.EN.BIN_0_TO_1" data="1"/>
+        <toggle hier="WORK.COV_TB.U_BUSY.EN.BIN_1_TO_0" data="0"/>
+      </scope>
+      <scope name="COUNT" line="13">
+        <toggle hier="WORK.COV_TB.U_BUSY.COUNT(3).BIN_0_TO_1" data="1"/>
+        <toggle hier="WORK.COV_TB.U_BUSY.COUNT(3).BIN_1_TO_0" data="1"/>
+        <toggle hier="WORK.COV_TB.U_BUSY.COUNT(2).BIN_0_TO_1" data="2"/>
+        <toggle hier="WORK.COV_TB.U_BUSY.COUNT(2).BIN_1_TO_0" data="2"/>
+        <toggle hier="WORK.COV_TB.U_BUSY.COUNT(1).BIN_0_TO_1" data="5"/>
+        <toggle hier="WORK.COV_TB.U_BUSY.COUNT(1).BIN_1_TO_0" data="4"/>
+        <toggle hier="WORK.COV_TB.U_BUSY.COUNT(0).BIN_0_TO_1" data="9"/>
+        <toggle hier="WORK.COV_TB.U_BUSY.COUNT(0).BIN_1_TO_0" data="9"/>
+      </scope>
+      <scope name="WRAP" line="14">
+        <toggle hier="WORK.COV_TB.U_BUSY.WRAP.BIN_0_TO_1" data="1"/>
+        <toggle hier="WORK.COV_TB.U_BUSY.WRAP.BIN_1_TO_0" data="1"/>
+      </scope>
+      <scope name="STATE" line="19">
+        <state hier="WORK.COV_TB.U_BUSY.STATE.BIN_STATE.IDLE" data="2"/>
+        <state hier="WORK.COV_TB.U_BUSY.STATE.BIN_STATE.COUNTING" data="2"/>
+        <state hier="WORK.COV_TB.U_BUSY.STATE.BIN_STATE.DONE" data="1"/>
+        <state hier="WORK.COV_TB.U_BUSY.STATE.BIN_STATE.ERROR_STATE" data="0"/>
+      </scope>
+      <scope name="CNT" line="20">
+        <toggle hier="WORK.COV_TB.U_BUSY.CNT(3).BIN_0_TO_1" data="1"/>
+        <toggle hier="WORK.COV_TB.U_BUSY.CNT(3).BIN_1_TO_0" data="1"/>
+        <toggle hier="WORK.COV_TB.U_BUSY.CNT(2).BIN_0_TO_1" data="2"/>
+        <toggle hier="WORK.COV_TB.U_BUSY.CNT(2).BIN_1_TO_0" data="2"/>
+        <toggle hier="WORK.COV_TB.U_BUSY.CNT(1).BIN_0_TO_1" data="5"/>
+        <toggle hier="WORK.COV_TB.U_BUSY.CNT(1).BIN_1_TO_0" data="4"/>
+        <toggle hier="WORK.COV_TB.U_BUSY.CNT(0).BIN_0_TO_1" data="9"/>
+        <toggle hier="WORK.COV_TB.U_BUSY.CNT(0).BIN_1_TO_0" data="9"/>
+      </scope>
+      <scope name="_P0" line="22">
+        <scope name="_S0" line="24">
+          <statement hier="WORK.COV_TB.U_BUSY._P0._S0" data="46"/>
+          <scope name="_B0">
+            <branch hier="WORK.COV_TB.U_BUSY._P0._S0._B0.BIN_TRUE" data="23"/>
+            <branch hier="WORK.COV_TB.U_BUSY._P0._S0._B0.BIN_FALSE" data="23"/>
+            <scope name="_S0" line="25">
+              <statement hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0" data="23"/>
+              <scope name="_B0">
+                <expression hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B0._E0.BIN_FALSE" data="22"/>
+                <expression hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B0._E0.BIN_TRUE" data="1"/>
+                <branch hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B0.BIN_TRUE" data="1"/>
+                <branch hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B0.BIN_FALSE" data="22"/>
+                <scope name="_S0" line="26">
+                  <statement hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B0._S0" data="1"/>
+                </scope>
+                <scope name="_S1" line="27">
+                  <statement hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B0._S1" data="1"/>
+                </scope>
+              </scope>
+              <scope name="_B1">
+                <scope name="_S0" line="29">
+                  <statement hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B1._S0" data="22"/>
+                  <scope name="_B0" line="30">
+                    <branch hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B1._S0._B0.BIN_CHOICE" data="3"/>
+                    <scope name="_S0" line="31">
+                      <statement hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B1._S0._B0._S0" data="3"/>
+                      <scope name="_B0">
+                        <expression hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B1._S0._B0._S0._B0._E0.BIN_FALSE" data="1"/>
+                        <expression hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B1._S0._B0._S0._B0._E0.BIN_TRUE" data="2"/>
+                        <branch hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B1._S0._B0._S0._B0.BIN_TRUE" data="2"/>
+                        <branch hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B1._S0._B0._S0._B0.BIN_FALSE" data="1"/>
+                        <scope name="_S0" line="32">
+                          <statement hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B1._S0._B0._S0._B0._S0" data="2"/>
+                        </scope>
+                      </scope>
+                    </scope>
+                  </scope>
+                  <scope name="_B1" line="34">
+                    <branch hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B1._S0._B1.BIN_CHOICE" data="18"/>
+                    <scope name="_S0" line="35">
+                      <statement hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B1._S0._B1._S0" data="18"/>
+                    </scope>
+                    <scope name="_S1" line="36">
+                      <statement hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B1._S0._B1._S1" data="18"/>
+                      <scope name="_B0">
+                        <branch hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B1._S0._B1._S1._B0.BIN_TRUE" data="1"/>
+                        <branch hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B1._S0._B1._S1._B0.BIN_FALSE" data="17"/>
+                        <scope name="_S0" line="37">
+                          <statement hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B1._S0._B1._S1._B0._S0" data="1"/>
+                        </scope>
+                      </scope>
+                    </scope>
+                  </scope>
+                  <scope name="_B2" line="39">
+                    <branch hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B1._S0._B2.BIN_CHOICE" data="1"/>
+                    <scope name="_S0" line="40">
+                      <statement hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B1._S0._B2._S0" data="1"/>
+                    </scope>
+                  </scope>
+                  <scope name="_B3" line="41">
+                    <branch hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B1._S0._B3.BIN_CHOICE" data="0"/>
+                    <scope name="_S0" line="42">
+                      <statement hier="WORK.COV_TB.U_BUSY._P0._S0._B0._S0._B1._S0._B3._S0" data="0"/>
+                    </scope>
+                  </scope>
+                </scope>
+              </scope>
+            </scope>
+          </scope>
+        </scope>
+      </scope>
+      <scope name="_P1" line="48">
+        <scope name="_S0">
+          <statement hier="WORK.COV_TB.U_BUSY._P1._S0" data="20"/>
+          <scope name="_B0">
+            <expression hier="WORK.COV_TB.U_BUSY._P1._S0._B0._E0.BIN_0_1" data="18"/>
+            <expression hier="WORK.COV_TB.U_BUSY._P1._S0._B0._E0.BIN_1_0" data="0"/>
+            <expression hier="WORK.COV_TB.U_BUSY._P1._S0._B0._E0.BIN_1_1" data="1"/>
+            <expression hier="WORK.COV_TB.U_BUSY._P1._S0._B0._E1.BIN_FALSE" data="1"/>
+            <expression hier="WORK.COV_TB.U_BUSY._P1._S0._B0._E1.BIN_TRUE" data="19"/>
+            <branch hier="WORK.COV_TB.U_BUSY._P1._S0._B0.BIN_TRUE" data="1"/>
+            <branch hier="WORK.COV_TB.U_BUSY._P1._S0._B0.BIN_FALSE" data="19"/>
+            <scope name="_S0">
+              <statement hier="WORK.COV_TB.U_BUSY._P1._S0._B0._S0" data="1"/>
+            </scope>
+          </scope>
+          <scope name="_B1">
+            <scope name="_S0" file="cov_design.vhd" line="48">
+              <statement hier="WORK.COV_TB.U_BUSY._P1._S0._B1._S0" data="19"/>
+            </scope>
+          </scope>
+        </scope>
+      </scope>
+      <scope name="_P2" line="49">
+        <scope name="_S0">
+          <statement hier="WORK.COV_TB.U_BUSY._P2._S0" data="19"/>
+        </scope>
+      </scope>
+    </scope>
+    <scope name="U_IDLE" block_name="COV_COUNTER-RTL" line="73">
+      <scope name="CLK" line="10">
+        <toggle hier="WORK.COV_TB.U_IDLE.CLK.BIN_0_TO_1" data="23"/>
+        <toggle hier="WORK.COV_TB.U_IDLE.CLK.BIN_1_TO_0" data="22"/>
+      </scope>
+      <scope name="RST" line="11">
+        <toggle hier="WORK.COV_TB.U_IDLE.RST.BIN_0_TO_1" data="0"/>
+        <toggle hier="WORK.COV_TB.U_IDLE.RST.BIN_1_TO_0" data="0"/>
+      </scope>
+      <scope name="EN" line="12">
+        <toggle hier="WORK.COV_TB.U_IDLE.EN.BIN_0_TO_1" data="-2147483648"/>
+        <toggle hier="WORK.COV_TB.U_IDLE.EN.BIN_1_TO_0" data="-2147483648"/>
+      </scope>
+      <scope name="COUNT" line="13">
+        <toggle hier="WORK.COV_TB.U_IDLE.COUNT(3).BIN_0_TO_1" data="0"/>
+        <toggle hier="WORK.COV_TB.U_IDLE.COUNT(3).BIN_1_TO_0" data="0"/>
+        <toggle hier="WORK.COV_TB.U_IDLE.COUNT(2).BIN_0_TO_1" data="0"/>
+        <toggle hier="WORK.COV_TB.U_IDLE.COUNT(2).BIN_1_TO_0" data="0"/>
+        <toggle hier="WORK.COV_TB.U_IDLE.COUNT(1).BIN_0_TO_1" data="0"/>
+        <toggle hier="WORK.COV_TB.U_IDLE.COUNT(1).BIN_1_TO_0" data="0"/>
+        <toggle hier="WORK.COV_TB.U_IDLE.COUNT(0).BIN_0_TO_1" data="0"/>
+        <toggle hier="WORK.COV_TB.U_IDLE.COUNT(0).BIN_1_TO_0" data="0"/>
+      </scope>
+      <scope name="WRAP" line="14">
+        <toggle hier="WORK.COV_TB.U_IDLE.WRAP.BIN_0_TO_1" data="0"/>
+        <toggle hier="WORK.COV_TB.U_IDLE.WRAP.BIN_1_TO_0" data="0"/>
+      </scope>
+      <scope name="STATE" line="19">
+        <state hier="WORK.COV_TB.U_IDLE.STATE.BIN_STATE.IDLE" data="1"/>
+        <state hier="WORK.COV_TB.U_IDLE.STATE.BIN_STATE.COUNTING" data="0"/>
+        <state hier="WORK.COV_TB.U_IDLE.STATE.BIN_STATE.DONE" data="0"/>
+        <state hier="WORK.COV_TB.U_IDLE.STATE.BIN_STATE.ERROR_STATE" data="0"/>
+      </scope>
+      <scope name="CNT" line="20">
+        <toggle hier="WORK.COV_TB.U_IDLE.CNT(3).BIN_0_TO_1" data="0"/>
+        <toggle hier="WORK.COV_TB.U_IDLE.CNT(3).BIN_1_TO_0" data="0"/>
+        <toggle hier="WORK.COV_TB.U_IDLE.CNT(2).BIN_0_TO_1" data="0"/>
+        <toggle hier="WORK.COV_TB.U_IDLE.CNT(2).BIN_1_TO_0" data="0"/>
+        <toggle hier="WORK.COV_TB.U_IDLE.CNT(1).BIN_0_TO_1" data="0"/>
+        <toggle hier="WORK.COV_TB.U_IDLE.CNT(1).BIN_1_TO_0" data="0"/>
+        <toggle hier="WORK.COV_TB.U_IDLE.CNT(0).BIN_0_TO_1" data="0"/>
+        <toggle hier="WORK.COV_TB.U_IDLE.CNT(0).BIN_1_TO_0" data="0"/>
+      </scope>
+      <scope name="_P0" line="22">
+        <scope name="_S0" line="24">
+          <statement hier="WORK.COV_TB.U_IDLE._P0._S0" data="46"/>
+          <scope name="_B0">
+            <branch hier="WORK.COV_TB.U_IDLE._P0._S0._B0.BIN_TRUE" data="23"/>
+            <branch hier="WORK.COV_TB.U_IDLE._P0._S0._B0.BIN_FALSE" data="23"/>
+            <scope name="_S0" line="25">
+              <statement hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0" data="23"/>
+              <scope name="_B0">
+                <expression hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B0._E0.BIN_FALSE" data="0"/>
+                <expression hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B0._E0.BIN_TRUE" data="23"/>
+                <branch hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B0.BIN_TRUE" data="23"/>
+                <branch hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B0.BIN_FALSE" data="0"/>
+                <scope name="_S0" line="26">
+                  <statement hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B0._S0" data="23"/>
+                </scope>
+                <scope name="_S1" line="27">
+                  <statement hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B0._S1" data="23"/>
+                </scope>
+              </scope>
+              <scope name="_B1">
+                <scope name="_S0" line="29">
+                  <statement hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B1._S0" data="0"/>
+                  <scope name="_B0" line="30">
+                    <branch hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B1._S0._B0.BIN_CHOICE" data="0"/>
+                    <scope name="_S0" line="31">
+                      <statement hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B1._S0._B0._S0" data="0"/>
+                      <scope name="_B0">
+                        <expression hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B1._S0._B0._S0._B0._E0.BIN_FALSE" data="0"/>
+                        <expression hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B1._S0._B0._S0._B0._E0.BIN_TRUE" data="0"/>
+                        <branch hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B1._S0._B0._S0._B0.BIN_TRUE" data="0"/>
+                        <branch hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B1._S0._B0._S0._B0.BIN_FALSE" data="0"/>
+                        <scope name="_S0" line="32">
+                          <statement hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B1._S0._B0._S0._B0._S0" data="0"/>
+                        </scope>
+                      </scope>
+                    </scope>
+                  </scope>
+                  <scope name="_B1" line="34">
+                    <branch hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B1._S0._B1.BIN_CHOICE" data="0"/>
+                    <scope name="_S0" line="35">
+                      <statement hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B1._S0._B1._S0" data="0"/>
+                    </scope>
+                    <scope name="_S1" line="36">
+                      <statement hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B1._S0._B1._S1" data="0"/>
+                      <scope name="_B0">
+                        <branch hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B1._S0._B1._S1._B0.BIN_TRUE" data="0"/>
+                        <branch hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B1._S0._B1._S1._B0.BIN_FALSE" data="0"/>
+                        <scope name="_S0" line="37">
+                          <statement hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B1._S0._B1._S1._B0._S0" data="0"/>
+                        </scope>
+                      </scope>
+                    </scope>
+                  </scope>
+                  <scope name="_B2" line="39">
+                    <branch hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B1._S0._B2.BIN_CHOICE" data="0"/>
+                    <scope name="_S0" line="40">
+                      <statement hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B1._S0._B2._S0" data="0"/>
+                    </scope>
+                  </scope>
+                  <scope name="_B3" line="41">
+                    <branch hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B1._S0._B3.BIN_CHOICE" data="0"/>
+                    <scope name="_S0" line="42">
+                      <statement hier="WORK.COV_TB.U_IDLE._P0._S0._B0._S0._B1._S0._B3._S0" data="0"/>
+                    </scope>
+                  </scope>
+                </scope>
+              </scope>
+            </scope>
+          </scope>
+        </scope>
+      </scope>
+      <scope name="_P1" line="48">
+        <scope name="_S0">
+          <statement hier="WORK.COV_TB.U_IDLE._P1._S0" data="1"/>
+          <scope name="_B0">
+            <expression hier="WORK.COV_TB.U_IDLE._P1._S0._B0._E0.BIN_0_1" data="0"/>
+            <expression hier="WORK.COV_TB.U_IDLE._P1._S0._B0._E0.BIN_1_0" data="0"/>
+            <expression hier="WORK.COV_TB.U_IDLE._P1._S0._B0._E0.BIN_1_1" data="0"/>
+            <expression hier="WORK.COV_TB.U_IDLE._P1._S0._B0._E1.BIN_FALSE" data="1"/>
+            <expression hier="WORK.COV_TB.U_IDLE._P1._S0._B0._E1.BIN_TRUE" data="0"/>
+            <branch hier="WORK.COV_TB.U_IDLE._P1._S0._B0.BIN_TRUE" data="0"/>
+            <branch hier="WORK.COV_TB.U_IDLE._P1._S0._B0.BIN_FALSE" data="1"/>
+            <scope name="_S0">
+              <statement hier="WORK.COV_TB.U_IDLE._P1._S0._B0._S0" data="0"/>
+            </scope>
+          </scope>
+          <scope name="_B1">
+            <scope name="_S0" file="cov_design.vhd" line="48">
+              <statement hier="WORK.COV_TB.U_IDLE._P1._S0._B1._S0" data="1"/>
+            </scope>
+          </scope>
+        </scope>
+      </scope>
+      <scope name="_P2" line="49">
+        <scope name="_S0">
+          <statement hier="WORK.COV_TB.U_IDLE._P2._S0" data="1"/>
+        </scope>
+      </scope>
+    </scope>
+  </scope>
+</scope>

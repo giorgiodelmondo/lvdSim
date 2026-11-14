@@ -98,6 +98,35 @@ TEST_CASE("loadFst reads hierarchy, aliases and all value kinds") {
     REQUIRE(st.scope(st.entry(bus).scope()).name == "dut");
 }
 
+TEST_CASE("loadFst reads port directions") {
+    TempFile f("lvdwave_loader_dirs.fst");
+    {
+        auto* w = fstWriterCreate(f.path.string().c_str(), 1);
+        REQUIRE(w != nullptr);
+        fstWriterSetScope(w, FST_ST_VHDL_ARCHITECTURE, "top", nullptr);
+        fstHandle a = fstWriterCreateVar(w, FST_VT_VCD_WIRE, FST_VD_IMPLICIT, 1, "a", 0);
+        fstWriterCreateVar(w, FST_VT_VCD_WIRE, FST_VD_INPUT, 1, "i", a);  // alias with its own direction
+        fstWriterCreateVar(w, FST_VT_VCD_WIRE, FST_VD_OUTPUT, 1, "o", 0);
+        fstWriterCreateVar(w, FST_VT_VCD_WIRE, FST_VD_INOUT, 1, "io", 0);
+        fstWriterCreateVar(w, FST_VT_VCD_WIRE, FST_VD_BUFFER, 1, "b", 0);
+        fstWriterCreateVar(w, FST_VT_VCD_WIRE, FST_VD_LINKAGE, 1, "l", 0);
+        fstWriterSetUpscope(w);
+        fstWriterEmitTimeChange(w, 0);
+        fstWriterEmitValueChange(w, a, "0");
+        fstWriterClose(w);
+    }
+    auto r = loadFst(f.path.string());
+    REQUIRE(r.ok());
+    const WaveStore& st = r.value();
+    auto dir = [&](const char* path) { return st.entry(st.findSignal(path)).direction(); };
+    REQUIRE(dir("top.a") == PortDirection::Unknown);  // "implicit" claims nothing
+    REQUIRE(dir("top.i") == PortDirection::In);
+    REQUIRE(dir("top.o") == PortDirection::Out);
+    REQUIRE(dir("top.io") == PortDirection::InOut);
+    REQUIRE(dir("top.b") == PortDirection::Buffer);
+    REQUIRE(dir("top.l") == PortDirection::Linkage);
+}
+
 TEST_CASE("loadFst reports a missing file") {
     auto r = loadFst("this_file_does_not_exist.fst");
     REQUIRE_FALSE(r.ok());

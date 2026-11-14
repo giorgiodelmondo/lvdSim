@@ -295,3 +295,58 @@ TEST_CASE("a manual analog range round-trips through serialize and parse with sc
     const auto autoBack = DisplayModel::parse(m.serialize());
     REQUIRE(autoBack.value().root().children[0].analog.autoRange);
 }
+
+TEST_CASE("row heights in pixels: defaults, limits and the layout file") {
+    CHECK(clampRowHeight(0) == 0);
+    CHECK(clampRowHeight(-5) == 0);
+    CHECK(clampRowHeight(3) == kMinRowHeightPx);
+    CHECK(clampRowHeight(40) == 40);
+    CHECK(clampRowHeight(100000) == kMaxRowHeightPx);
+
+    DisplayItem sig = DisplayModel::makeSignal("tb.clk");
+    CHECK(rowHeightPx(sig, false) == kDefaultRowHeightPx);
+    CHECK(rowHeightPx(sig, true) == 4 * kDefaultRowHeightPx); // analog default: heightRows lines
+    sig.heightPx = 31;
+    CHECK(rowHeightPx(sig, false) == 31);
+    CHECK(rowHeightPx(sig, true) == 31);
+
+    DisplayModel m;
+    DisplayItem a = DisplayModel::makeSignal("tb.a");
+    a.heightPx = 40;
+    m.root().children.push_back(a);
+    DisplayItem bus = DisplayModel::makeBus("vb", {"tb.a", BusMember("tb.b", 2)});
+    bus.heightPx = 120;
+    bus.analog.enabled = true;
+    m.root().children.push_back(bus);
+    DisplayItem ex = DisplayModel::makeExpression("e", "tb.a and tb.b");
+    ex.heightPx = 14;
+    m.root().children.push_back(ex);
+    DisplayItem cmp = DisplayModel::makeCompare("c", "tb.a", "ref:tb.a");
+    cmp.heightPx = 25;
+    m.root().children.push_back(cmp);
+    DisplayItem div = DisplayModel::makeDivider("d");
+    div.heightPx = 30;
+    m.root().children.push_back(div);
+    m.root().children.push_back(DisplayModel::makeSignal("tb.plain"));
+
+    const std::string text = m.serialize();
+    CHECK(text.find("heightpx=40") != std::string::npos);
+    CHECK(text.find("signal \"tb.plain\" radix=default\n") != std::string::npos); // nothing for the default
+    auto back = DisplayModel::parse(text);
+    REQUIRE(back.ok());
+    const auto& c = back.value().root().children;
+    REQUIRE(c.size() == 6);
+    CHECK(c[0].heightPx == 40);
+    CHECK(c[1].heightPx == 120);
+    CHECK(c[1].analog.enabled);
+    CHECK(c[2].heightPx == 14);
+    CHECK(c[3].heightPx == 25);
+    CHECK(c[4].heightPx == 30);
+    CHECK(c[5].heightPx == 0);
+    CHECK(back.value().serialize() == text);
+    // out of range values in a file are brought into range
+    auto clamped = DisplayModel::parse("lvdwave-display 1\nsignal \"x\" heightpx=2\nsignal \"y\" heightpx=99999\n");
+    REQUIRE(clamped.ok());
+    CHECK(clamped.value().root().children[0].heightPx == kMinRowHeightPx);
+    CHECK(clamped.value().root().children[1].heightPx == kMaxRowHeightPx);
+}

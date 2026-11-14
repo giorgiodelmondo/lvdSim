@@ -6,9 +6,12 @@
 #include "wave/wave_widget.hpp"
 
 #include <QAction>
+#include <QActionGroup>
 #include <QKeySequence>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
+#include <QToolButton>
 
 namespace lvd::gui {
 
@@ -31,13 +34,68 @@ WaveToolBar::WaveToolBar(WaveWidget* wave, QWidget* parent)
     connect(add("goStart", tr("Start"), tr("Go to the beginning of the simulation (Home)"),
                 makeIcon(Icon::GoStart)),
             &QAction::triggered, this, [this] { wave_->goToStart(); });
-    connect(add("prevEdge", tr("Previous transition"), tr("Previous transition (Left)"),
+    connect(add("prevEdge", tr("Previous edge"),
+                tr("Previous edge of the selected signals (Left or Shift+Tab); the edge button chooses any, "
+                   "rising "
+                   "or falling"),
                 makeIcon(Icon::PrevEdge)),
             &QAction::triggered, this, [this] { wave_->jumpToEdge(-1); });
-    connect(add("nextEdge", tr("Next transition"), tr("Next transition (Right)"), makeIcon(Icon::NextEdge)),
+    connect(add("nextEdge", tr("Next edge"),
+                tr("Next edge of the selected signals (Right or Tab); the edge button chooses any, rising or "
+                   "falling"),
+                makeIcon(Icon::NextEdge)),
             &QAction::triggered, this, [this] { wave_->jumpToEdge(+1); });
+
+    // Which edges the buttons and keys look for.
+    edgeButton_ = new QToolButton(this);
+    edgeButton_->setObjectName("edgeKind");
+    edgeButton_->setPopupMode(QToolButton::InstantPopup);
+    edgeButton_->setToolTip(tr("Edges to step through: any change, rising or falling (single-bit rows)"));
+    auto* edgeMenu = new QMenu(edgeButton_);
+    auto* edgeGroup = new QActionGroup(edgeButton_);
+    struct EdgeEntry {
+        const char* name;
+        QString text;
+        Icon icon;
+        lvd::wave::EdgeKind kind;
+    };
+    const EdgeEntry entries[] = {
+        {"edgeAny", tr("Any edge"), Icon::AnyEdge, lvd::wave::EdgeKind::Any},
+        {"edgeRising", tr("Rising edge"), Icon::RisingEdge, lvd::wave::EdgeKind::Rising},
+        {"edgeFalling", tr("Falling edge"), Icon::FallingEdge, lvd::wave::EdgeKind::Falling},
+    };
+    for (const EdgeEntry& e : entries) {
+        QAction* a = edgeMenu->addAction(makeIcon(e.icon), e.text);
+        a->setObjectName(e.name);
+        a->setCheckable(true);
+        a->setChecked(e.kind == wave_->edgeKind());
+        edgeGroup->addAction(a);
+        const lvd::wave::EdgeKind kind = e.kind;
+        connect(a, &QAction::triggered, this, [this, kind] { wave_->setEdgeKind(kind); });
+    }
+    edgeButton_->setMenu(edgeMenu);
+    auto syncEdge = [this, edgeMenu](lvd::wave::EdgeKind kind) {
+        static constexpr const char* kNames[] = {"edgeAny", "edgeRising", "edgeFalling"};
+        if (auto* a = edgeMenu->findChild<QAction*>(kNames[static_cast<int>(kind)])) {
+            a->setChecked(true);
+            edgeButton_->setIcon(a->icon());
+            edgeButton_->setText(a->text());
+        }
+    };
+    syncEdge(wave_->edgeKind());
+    connect(wave_, &WaveWidget::edgeKindChanged, this, syncEdge);
+    addWidget(edgeButton_);
     connect(add("goEnd", tr("End"), tr("Go to the end of the simulation (End)"), makeIcon(Icon::GoEnd)),
             &QAction::triggered, this, [this] { wave_->goToEnd(); });
+
+    find_ =
+        add("findValue", tr("Find value..."),
+            tr("Find a value or a threshold crossing on the selected signals (Ctrl+F; F3 / Shift+F3 repeat)"),
+            makeIcon(Icon::FindValue));
+    find_->setShortcut(QKeySequence::Find);
+    find_->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    wave_->addAction(find_); // Ctrl+F while the wave window has the focus
+    connect(find_, &QAction::triggered, this, [this] { wave_->showFindDialog(); });
 
     addSeparator();
     addWidget(new QLabel(tr(" Go to: "), this));
@@ -63,11 +121,13 @@ WaveToolBar::WaveToolBar(WaveWidget* wave, QWidget* parent)
     follow_->setCheckable(true);
     follow_->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F));
     follow_->setShortcutContext(Qt::WindowShortcut);
-    follow_->setStatusTip(tr("Keep the right edge of the view at the end of the simulation as it runs (Ctrl+Shift+F)"));
+    follow_->setStatusTip(
+        tr("Keep the right edge of the view at the end of the simulation as it runs (Ctrl+Shift+F)"));
     follow_->setChecked(wave_->follow());
     connect(follow_, &QAction::toggled, this, [this](bool on) { wave_->setFollow(on); });
     connect(wave_, &WaveWidget::followChanged, this, [this](bool on) {
-        if (follow_->isChecked() != on) follow_->setChecked(on);
+        if (follow_->isChecked() != on)
+            follow_->setChecked(on);
     });
 
     addSeparator();

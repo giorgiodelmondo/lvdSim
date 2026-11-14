@@ -130,6 +130,70 @@ void draw(QPainter& p, Icon icon, const QColor& fg) {
         p.drawEllipse(QRectF(3.5, 3.5, 17, 17));
         p.drawPolyline(QPolygonF({{12, 7}, {12, 12}, {16, 14.5}}));
         break;
+
+    case Icon::AnyEdge: // a pulse: up and down
+        p.drawPolyline(QPolygonF({{2, 18}, {8, 18}, {8, 6}, {16, 6}, {16, 18}, {22, 18}}));
+        break;
+
+    case Icon::RisingEdge: // a step up with an arrow on it
+        p.drawPolyline(QPolygonF({{2, 19}, {11, 19}, {11, 5}, {22, 5}}));
+        p.drawPolyline(QPolygonF({{7.5, 11}, {11, 7}, {14.5, 11}}));
+        break;
+
+    case Icon::FallingEdge: // a step down with an arrow on it
+        p.drawPolyline(QPolygonF({{2, 5}, {11, 5}, {11, 19}, {22, 19}}));
+        p.drawPolyline(QPolygonF({{7.5, 13}, {11, 17}, {14.5, 13}}));
+        break;
+
+    case Icon::FindValue: // a magnifier over an equals sign
+        p.drawEllipse(QRectF(3.5, 3.5, 12, 12));
+        p.drawLine(QPointF(14, 14), QPointF(21, 21));
+        p.drawLine(QPointF(7, 8), QPointF(12, 8));
+        p.drawLine(QPointF(7, 11), QPointF(12, 11));
+        break;
+
+    case Icon::ListWindow: // a table: header row and a time column
+        p.drawRect(QRectF(3, 4, 18, 16));
+        p.drawLine(QPointF(3, 9.5), QPointF(21, 9.5));
+        p.drawLine(QPointF(10, 9.5), QPointF(10, 20));
+        break;
+
+    case Icon::Continue: // a bar and a run triangle: go on from where the run stopped
+        filled(kGreen);
+        p.drawRect(QRectF(4, 5, 3.5, 14));
+        p.drawPolygon(QPolygonF({{10, 5}, {21, 12}, {10, 19}}));
+        break;
+
+    case Icon::StepInto: // an arrow going down onto a statement
+        p.drawLine(QPointF(12, 3), QPointF(12, 14));
+        p.drawPolyline(QPolygonF({{7.5, 9.5}, {12, 14}, {16.5, 9.5}}));
+        filled(fg);
+        p.drawEllipse(QPointF(12, 19.5), 2.5, 2.5);
+        break;
+
+    case Icon::StepOver: { // an arc jumping over a statement
+        QPainterPath arc;
+        arc.moveTo(4, 15);
+        arc.cubicTo(5, 4, 18, 4, 19, 12);
+        p.drawPath(arc);
+        p.drawPolyline(QPolygonF({{14.5, 10}, {19.2, 13}, {21.5, 8}}));
+        filled(fg);
+        p.drawEllipse(QPointF(12, 19.5), 2.5, 2.5);
+        break;
+    }
+
+    case Icon::StepOut: // an arrow leaving a statement upwards
+        p.drawLine(QPointF(12, 15), QPointF(12, 3.5));
+        p.drawPolyline(QPolygonF({{7.5, 8}, {12, 3.5}, {16.5, 8}}));
+        filled(fg);
+        p.drawEllipse(QPointF(12, 19.5), 2.5, 2.5);
+        break;
+
+    case Icon::Break: // two bars: hold the run where it is
+        filled(kAmber);
+        p.drawRoundedRect(QRectF(6, 5, 4.5, 14), 1, 1);
+        p.drawRoundedRect(QRectF(13.5, 5, 4.5, 14), 1, 1);
+        break;
     }
 }
 

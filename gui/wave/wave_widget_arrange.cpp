@@ -2,9 +2,14 @@
 // Arranging the rows of a WaveWidget: move, group, ungroup, rename, drag and drop, undo and redo.
 // The tree operations themselves live in libwave (lvd::wave, display_edit.hpp); this file connects them to
 // the selection, the scroll position, the menus and the mouse.
+#include "wave/signal_mime.hpp"
 #include "wave/wave_widget.hpp"
 
 #include <QApplication>
+#include <QDragEnterEvent>
+#include <QDragLeaveEvent>
+#include <QDragMoveEvent>
+#include <QDropEvent>
 #include <QEvent>
 #include <QFocusEvent>
 #include <QInputDialog>
@@ -371,7 +376,7 @@ void WaveWidget::positionEditor() {
         return;
     }
     const Row& r = rows_[static_cast<std::size_t>(row)];
-    const int top = rowTop(row);
+    const int top = rowTop(row) + std::max(0, (labelBand(r) - kRowHeight) / 2); // centred on the name
     const int x = 6 + r.depth * 14 + (r.item->kind == ItemKind::Divider ? 0 : 14) - 2;
     editorBusy_ = true;
     editor_->setGeometry(x, top, std::max(60, nameWidth_ - x - 3), kRowHeight - 1);
@@ -566,8 +571,11 @@ void WaveWidget::populateArrangeMenu(QMenu* menu, bool withAnalogSettings) {
 
     if (withAnalogSettings) {
         menu->addSeparator();
-        add("analogSettings", tr("Analog Settings..."), tr("Auto or manual (Min, Max) range of the selected analog traces"),
-            analogSelectionAvailable(), [this] { showAnalogSettings(); });
+        add("analogSettings", tr("Analog Settings..."),
+            tr("Auto or manual (Min, Max) range of the selected analog traces"), analogSelectionAvailable(),
+            [this] { showAnalogSettings(); });
+        add("rowHeight", tr("Height..."), tr("Height in pixels of the selected rows (Alt+Up / Alt+Down)"),
+            heightSelectionAvailable(), [this] { showRowHeightDialog(); });
     }
 }
 
@@ -575,11 +583,23 @@ void WaveWidget::populateArrangeMenu(QMenu* menu, bool withAnalogSettings) {
 // Drag and drop of rows
 
 WaveWidget::RowDropTarget WaveWidget::dropTargetAt(const QPoint& pos) const {
+    return targetAt(pos, false);
+}
+
+WaveWidget::RowDropTarget WaveWidget::signalDropTargetAt(const QPoint& pos) const {
+    return targetAt(pos, true);
+}
+
+// Rows being moved must stay on the name column; signals dragged in from the Objects pane may also land on
+// the value or wave area, and nothing about them can clash with the tree (they are new rows).
+WaveWidget::RowDropTarget WaveWidget::targetAt(const QPoint& pos, bool external) const {
     RowDropTarget t;
     const std::vector<ItemId> dragged = drag_ == Drag::Rows ? dragIds_ : selectedItemIds();
-    if (pos.x() < 0 || pos.x() >= nameWidth_ || pos.y() < kRowsTop || pos.y() >= rowsBottom()) {
+    const int right = external ? width() : nameWidth_;
+    if (pos.x() < 0 || pos.x() >= right || pos.y() < kRowsTop || pos.y() >= rowsBottom()) {
         t.outside = true;
-        t.reason = tr("Drop the rows on the name column");
+        t.reason = external ? tr("Drop the signals on the name or wave area")
+                            : tr("Drop the rows on the name column");
         return t;
     }
 
@@ -647,7 +667,8 @@ WaveWidget::RowDropTarget WaveWidget::dropTargetAt(const QPoint& pos) const {
         }
     }
     t.lineX = 6 + std::max(0, depth) * 14;
-    t.reason = QString::fromStdString(checkMoveToGroup(model_, dragged, t.parent));
+    if (!external)
+        t.reason = QString::fromStdString(checkMoveToGroup(model_, dragged, t.parent));
     t.valid = t.reason.isEmpty();
     return t;
 }
@@ -668,6 +689,12 @@ bool WaveWidget::startRowDrag() {
 }
 
 void WaveWidget::updateRowDrag(const QPoint& pos) {
+    if (drag_ == Drag::Signals) {
+        lastMouse_ = pos;
+        dropTarget_ = signalDropTargetAt(pos);
+        update();
+        return;
+    }
     if (drag_ != Drag::Rows)
         return;
     lastMouse_ = pos;
@@ -710,11 +737,133 @@ bool WaveWidget::finishRowDrag(const QPoint& pos) {
     return moveRowsToGroup(ids, target.parent, target.index);
 }
 
+// ---------------------------------------------------------------------------------------------
+// Signals dragged in from the Objects pane
+
+bool WaveWidget::signalDragActive() const noexcept {
+    return drag_ == Drag::Signals;
+}
+
+void WaveWidget::dragEnterEvent(QDragEnterEvent* e) {
+    if (!hasSignalPaths(e->mimeData()) || store_ == nullptr || drag_ == Drag::Rows) {
+        e->ignore();
+        return;
+    }
+    cancelRename();
+    drag_ = Drag::Signals;
+    lastMouse_ = e->position().toPoint();
+    dropTarget_ = signalDropTargetAt(lastMouse_);
+    autoScroll_->start();
+    e->setDropAction(Qt::CopyAction);
+    e->accept();
+    update();
+}
+
+void WaveWidget::dragMoveEvent(QDragMoveEvent* e) {
+    if (drag_ != Drag::Signals) {
+        e->ignore();
+        return;
+    }
+    updateRowDrag(e->position().toPoint());
+    // An ignored move event shows the "not allowed" cursor.
+    if (dropTarget_.valid) {
+        e->setDropAction(Qt::CopyAction);
+        e->accept();
+    } else {
+        e->ignore();
+    }
+}
+
+void WaveWidget::endSignalDrag() {
+    if (drag_ != Drag::Signals)
+        return;
+    drag_ = Drag::None;
+    autoScroll_->stop();
+    dropTarget_ = RowDropTarget{};
+    update();
+}
+
+void WaveWidget::dragLeaveEvent(QDragLeaveEvent* e) {
+    endSignalDrag();
+    e->accept();
+}
+
+void WaveWidget::dropEvent(QDropEvent* e) {
+    if (!hasSignalPaths(e->mimeData())) {
+        endSignalDrag();
+        e->ignore();
+        return;
+    }
+    const RowDropTarget target = signalDropTargetAt(e->position().toPoint());
+    endSignalDrag();
+    if (!target.valid) {
+        e->ignore();
+        return;
+    }
+    const QStringList paths = signalPathsFromMime(e->mimeData());
+    if (paths.isEmpty() || dropSignals(paths, target.parent, target.index) == 0) {
+        e->ignore();
+        return;
+    }
+    e->setDropAction(Qt::CopyAction);
+    e->accept();
+}
+
+std::size_t WaveWidget::dropSignals(const QStringList& addWavePaths, ItemId parent, std::size_t index) {
+    lastEditError_.clear();
+    if (store_ == nullptr || addWavePaths.isEmpty())
+        return 0;
+    cancelRowDrag();
+    cancelRename();
+
+    // The same machinery as `add wave PATH...`; it appends to the top level, then the new rows are moved
+    // to the place the pointer was over. One snapshot makes the whole drop one undo step.
+    Snapshot before{model_, selected_, addWavePaths.size() == 1 ? tr("Add signal") : tr("Add signals")};
+    AddWaveRequest req;
+    for (const QString& p : addWavePaths)
+        req.patterns.push_back(p.toStdString());
+    const std::size_t oldCount = model_.root().children.size();
+    const std::size_t n = applyAddWave(model_, *store_, req);
+    if (n == 0) {
+        lastEditError_ = tr("No signal matches");
+        emit editRejected(lastEditError_);
+        model_ = std::move(before.model);
+        return 0;
+    }
+    std::vector<ItemId> added;
+    const auto& top = model_.root().children;
+    for (std::size_t i = oldCount; i < top.size(); ++i)
+        added.push_back(top[i].id);
+
+    const bool atEnd = parent == kTopLevel && index >= oldCount;
+    if (!atEnd) {
+        auto r = moveItemsToGroup(model_, added, parent, index);
+        if (!r.ok()) {
+            lastEditError_ = QString::fromStdString(r.error());
+            emit editRejected(lastEditError_);
+            model_ = std::move(before.model);
+            return 0;
+        }
+        if (parent != kTopLevel)
+            if (DisplayItem* g = findItem(model_, parent))
+                g->expanded = true; // keep the new rows in view
+    }
+    pushUndo(std::move(before));
+    selected_.clear();
+    for (ItemId id : added)
+        selected_.push_back(RowKey{id, -1});
+    afterEdit();
+    ensureRowVisible(rowOfItem(added.front()));
+    return n;
+}
+
 int WaveWidget::autoScrollStep() {
-    if (drag_ != Drag::Rows)
+    if (drag_ != Drag::Rows && drag_ != Drag::Signals)
         return 0;
     const QPoint p = lastMouse_;
-    if (p.x() < 0 || p.x() >= waveLeft())
+    if (drag_ == Drag::Rows && (p.x() < 0 || p.x() >= waveLeft()))
+        return 0;
+    if (drag_ == Drag::Signals && (p.x() < 0 || p.x() >= width()))
         return 0;
     constexpr int kZone = 28;
     int dy = 0;

@@ -14,19 +14,20 @@ namespace lvd::tools {
 /// Everything the planners need to know about the environment. All file system access goes through
 /// the callbacks so the planners can be tested without touching the disk.
 struct Context {
-    LibraryMap libs;                                                   ///< from lvdsim.ini
-    std::function<bool(const std::string&)> dirExists;                 ///< is there a directory with this path
-    std::function<std::optional<std::string>(const std::string&)> readFile;  ///< file contents, nullopt if missing
-    std::vector<std::string> nvcGlobalArgs;  ///< put in front of every nvc call, e.g. {"-L", "<libdir>"}
-    std::string compatTcl;                   ///< path of tcl/compat/lvdcompat.tcl, empty if not found
-    std::string tempDir = ".";               ///< where temporary scripts are written
-    std::string defaultStd = "08";           ///< VHDL standard used when no -93/-2002/-2008/-2019 is given
-    bool strict = false;                     ///< unsupported options are errors instead of warnings
-    std::string guiWaveFile;                 ///< set by the GUI: live waveform stream nvc should write
+    LibraryMap libs;                                   ///< from lvdsim.ini
+    std::function<bool(const std::string&)> dirExists; ///< is there a directory with this path
+    std::function<std::optional<std::string>(const std::string&)>
+        readFile;                           ///< file contents, nullopt if missing
+    std::vector<std::string> nvcGlobalArgs; ///< put in front of every nvc call, e.g. {"-L", "<libdir>"}
+    std::string compatTcl;                  ///< path of tcl/compat/lvdcompat.tcl, empty if not found
+    std::string tempDir = ".";              ///< where temporary scripts are written
+    std::string defaultStd = "08";          ///< VHDL standard used when no -93/-2002/-2008/-2019 is given
+    bool strict = false;                    ///< unsupported options are errors instead of warnings
+    std::string guiWaveFile;                ///< set by the GUI: live waveform stream nvc should write
 };
 
 struct NvcCall {
-    std::vector<std::string> args;  ///< arguments after the nvc executable
+    std::vector<std::string> args; ///< arguments after the nvc executable
 };
 
 struct TempFile {
@@ -36,21 +37,25 @@ struct TempFile {
 
 /// What to do for one tool invocation. The planner never executes anything.
 struct Plan {
-    std::vector<NvcCall> calls;                                  ///< run in order, stop at the first failure
-    std::vector<std::string> directories;                        ///< create before running
-    std::vector<TempFile> files;                                 ///< write before running, delete afterwards
-    std::vector<TempFile> keepFiles;                             ///< write before running and keep (library markers)
-    std::vector<std::pair<std::string, std::string>> mappings;   ///< library name -> path to record in lvdsim.ini
+    std::vector<NvcCall> calls;           ///< run in order, stop at the first failure
+    std::vector<std::string> directories; ///< create before running
+    std::vector<TempFile> files;          ///< write before running, delete afterwards
+    std::vector<TempFile> keepFiles;      ///< write before running and keep (library markers)
+    std::vector<std::pair<std::string, std::string>>
+        mappings; ///< library name -> path to record in lvdsim.ini
     std::vector<std::string> warnings;
-    std::string message;                                         ///< informational text for stdout
-    std::string error;                                           ///< non-empty: print and exit with 1, run nothing
+    std::string message; ///< informational text for stdout
+    std::string error;   ///< non-empty: print and exit with 1, run nothing
+    /// vsim -coverage: the coverage database the elaboration writes (relative to the working directory unless
+    /// -lvdcoverfile gave an absolute path); empty without coverage.
+    std::string coverageFile;
 
     /// vsim without -c. A plan with gui set carries no calls when produced for the command line tools:
     /// they start the GUI with guiArgs. The GUI itself asks for a plan with Context::guiWaveFile set and
     /// then runs calls[0] as an interactive shell, sending startupScripts to it.
     bool gui = false;
     std::vector<std::string> guiArgs;
-    std::vector<std::string> startupScripts;  ///< sourced in order once the shell is up (GUI only)
+    std::vector<std::string> startupScripts; ///< sourced in order once the shell is up (GUI only)
 
     bool ok() const noexcept { return error.empty(); }
 };
@@ -63,14 +68,17 @@ Plan planVmap(std::vector<std::string> args, const Context& ctx);
 Plan planVcom(std::vector<std::string> args, const Context& ctx);
 /// vlog [-work lib] [-sv] [+define+X=1] [+incdir+dir] [-L lib] [-f file] files...
 Plan planVlog(std::vector<std::string> args, const Context& ctx);
-/// vsim [-c] [-do script|"cmds"] [-lib lib] [-L lib] [-g name=value] [-wlf file|-lvdlive file] [lib.]top
+/// vsim [-c] [-do script|"cmds"] [-lib lib] [-L lib] [-g<name>=<value>] [-G<name>=<value>] [-wlf
+/// file|-lvdlive file] [-coverage [-lvdcover kinds] [-lvdcoverfile db]] [lib.]top. Generic names may be
+/// hierarchical (/top/inst/NAME or inst/NAME) and become nvc's inst.NAME.
 Plan planVsim(std::vector<std::string> args, const Context& ctx);
 
 /// Replace every "-f file" in args by the whitespace separated words of that file (recursively, quotes
 /// group words). Sets *error and returns the input unchanged if a file cannot be read.
-std::vector<std::string> expandArgFiles(const std::vector<std::string>& args,
-                                        const std::function<std::optional<std::string>(const std::string&)>& readFile,
-                                        std::string* error);
+std::vector<std::string>
+expandArgFiles(const std::vector<std::string>& args,
+               const std::function<std::optional<std::string>(const std::string&)>& readFile,
+               std::string* error);
 
 /// Splits "work.top(arch)" or "top" into library, unit and architecture (empty if absent).
 struct DesignUnitName {
@@ -80,4 +88,4 @@ struct DesignUnitName {
 };
 DesignUnitName parseDesignUnit(const std::string& text);
 
-}  // namespace lvd::tools
+} // namespace lvd::tools

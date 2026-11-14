@@ -11,11 +11,13 @@ namespace lvd::gui {
 
 namespace {
 
-constexpr int kUnitRole = Qt::UserRole;  // "library.unit" on unit rows and their architecture rows
+constexpr int kUnitRole = Qt::UserRole;     // "library.unit" on unit rows and their architecture rows
+constexpr int kArchRole = Qt::UserRole + 1; // the architecture name on architecture rows
 
-}  // namespace
+} // namespace
 
-LibraryPane::LibraryPane(QWidget* parent) : QWidget(parent) {
+LibraryPane::LibraryPane(QWidget* parent)
+    : QWidget(parent) {
     tree_ = new QTreeWidget(this);
     tree_->setColumnCount(2);
     tree_->setHeaderLabels({tr("Library / unit"), tr("Details")});
@@ -24,10 +26,12 @@ LibraryPane::LibraryPane(QWidget* parent) : QWidget(parent) {
     tree_->header()->setSectionResizeMode(0, QHeaderView::Stretch);
     for (int c = 1; c < tree_->columnCount(); ++c)
         tree_->header()->setSectionResizeMode(c, QHeaderView::ResizeToContents);
-    // No activation handler on purpose: a double click only expands or collapses (QTreeView default).
-    // Simulating is explicit: context menu "Simulate" or the vsim command.
-    tree_->setExpandsOnDoubleClick(true);
-    tree_->setContextMenuPolicy(Qt::NoContextMenu);  // the pane's own contextMenuEvent builds the menu
+    // A double click on a unit shows its source, on a library it expands or collapses. It never simulates:
+    // that is explicit (context menu "Simulate" or the vsim command).
+    tree_->setExpandsOnDoubleClick(false);
+    connect(tree_, &QTreeWidget::itemDoubleClicked, this,
+            [this](QTreeWidgetItem* item, int) { itemDoubleClicked(item); });
+    tree_->setContextMenuPolicy(Qt::NoContextMenu); // the pane's own contextMenuEvent builds the menu
 
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -49,7 +53,9 @@ void LibraryPane::setLibraries(const std::vector<lvd::tools::LibraryInfo>& libra
             const QString id = QString::fromStdString(lib.name + "." + u.name);
             auto* unitItem = new QTreeWidgetItem(libItem);
             unitItem->setText(0, QString::fromStdString(u.name));
-            unitItem->setText(1, u.elaborated ? tr("elaborated") : (u.architectures.empty() ? tr("entity or package") : tr("entity")));
+            unitItem->setText(1, u.elaborated
+                                     ? tr("elaborated")
+                                     : (u.architectures.empty() ? tr("entity or package") : tr("entity")));
             unitItem->setData(0, kUnitRole, id);
             ++units_;
 
@@ -58,16 +64,40 @@ void LibraryPane::setLibraries(const std::vector<lvd::tools::LibraryInfo>& libra
                 archItem->setText(0, QString::fromStdString(a));
                 archItem->setText(1, tr("architecture"));
                 archItem->setData(0, kUnitRole, id);
+                archItem->setData(0, kArchRole, QString::fromStdString(a));
             }
         }
     }
     tree_->expandToDepth(0);
 }
 
+void LibraryPane::itemDoubleClicked(QTreeWidgetItem* item) {
+    if (item == nullptr)
+        return;
+    const QString unit = item->data(0, kUnitRole).toString();
+    if (unit.isEmpty()) {
+        item->setExpanded(!item->isExpanded());
+        return;
+    }
+    const QString arch = item->data(0, kArchRole).toString();
+    if (sourceGate_ && !sourceGate_(unit, arch).isEmpty())
+        return;
+    emit viewSourceRequested(unit, arch);
+}
+
 QMenu* LibraryPane::createContextMenu(QTreeWidgetItem* item) {
     auto* menu = new QMenu(this);
     menu->setObjectName("libraryContextMenu");
     const QString unit = item ? item->data(0, kUnitRole).toString() : QString();
+    const QString arch = item ? item->data(0, kArchRole).toString() : QString();
+    QAction* view = menu->addAction(tr("View Source"));
+    view->setObjectName("viewSource");
+    const QString why = unit.isEmpty() ? tr("Select a design unit")
+                        : sourceGate_  ? sourceGate_(unit, arch)
+                                       : QString();
+    view->setEnabled(why.isEmpty());
+    view->setToolTip(why);
+    connect(view, &QAction::triggered, this, [this, unit, arch] { emit viewSourceRequested(unit, arch); });
     QAction* sim = menu->addAction(tr("Simulate"));
     sim->setObjectName("simulate");
     sim->setEnabled(!unit.isEmpty());
@@ -81,10 +111,11 @@ QMenu* LibraryPane::createContextMenu(QTreeWidgetItem* item) {
 
 void LibraryPane::contextMenuEvent(QContextMenuEvent* e) {
     QTreeWidgetItem* item = tree_->itemAt(tree_->viewport()->mapFromGlobal(e->globalPos()));
-    if (item) tree_->setCurrentItem(item);
+    if (item)
+        tree_->setCurrentItem(item);
     QMenu* menu = createContextMenu(item);
     menu->exec(e->globalPos());
     delete menu;
 }
 
-}  // namespace lvd::gui
+} // namespace lvd::gui

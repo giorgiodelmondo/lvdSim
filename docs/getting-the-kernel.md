@@ -50,6 +50,6 @@ clone).
 
 ## Check
 
-`git -C kernel/nvc log -1 --format=%H` prints the commit (at the time of writing `754af76cc`, "Merge remote-tracking branch
-'origin/verilog-tim' into lvdsim", on top of upstream `4e41ba459`) and `git -C kernel/nvc status --short` must print nothing.
+`git -C kernel/nvc log -1 --format=%H` prints the commit (at the time of writing `53d41eeae`, "Merge upstream/master into lvdsim", which contains upstream
+up to `0b2837794`) and `git -C kernel/nvc status --short` must print nothing.
 `kernel/nvc/build/bin/nvc.exe --version` (Windows, with `C:/msys64/mingw64/bin` on PATH) shows the commit hash too.

@@ -4,7 +4,9 @@ This is a step by step guide for the person who will submit the patches to https
 know a little git and nothing about how NVC takes contributions. Nothing has been pushed, no pull request has been opened
 and nobody has been contacted: every step below is yours to do.
 
-The ready made material is in `kernel/upstream/`: three folders, one per pull request, each with a plain `.patch` file and a `PR.md`
+The ready made material is in `kernel/upstream/`: one folder per pull request (nine; **01, 02 and 03 have been sent** by the owner, PR numbers
+not recorded yet; 04 to 09 were regrouped on 2026-11-14 from the former change sets 04 to 39, see `kernel/PATCHES.md`), each with a plain
+`.patch` file and a `PR.md`
 with the title and the text to paste, plus `README.md`, `series-order.txt` and `VERIFY.md` (the commands and results of the builds and tests).
 There is no scratch repository with branches any more: you apply a patch to a fresh clone of NVC yourself (section 7).
 
@@ -28,6 +30,29 @@ Since 2026-11-08 the lvdsim kernel is the branch `lvdsim` of the fork `giorgiode
 | `01-verilog-time-delay-timeformat` | `timescale` aware delays and `$time` (rounded to the nearest unit, ties up), new `$realtime`, `$timeformat` and `%t`, fix of the unit `s`; node layout change | 0007, 0015, 0016 | `vtimescale1`, `vtimescale2`, `vtimeformat1`; gold file `ivtest2` changes |
 | `02-bug-fixes` | reheat of all top levels (`-e top glbl` then `-r`), `always @(*)` with procedural `assign` or real constant, hierarchical reference as `assign`/`force`/`release` target, non-blocking assignment after `deassign`, VHDL `string`/`open` generics for Verilog parameters, Verilog module lookup across libraries, shell `exit` waits for asynchronous work | 0006, 0008, 0009, 0010, 0011, 0012, 0013, 0014 | `vtops1`, `mixed_str1`, `mixed_open1`, `sens_assign1`, `href_lval1`, `nba_deassign1` |
 | `03-interactive-mode` | shell waveform options, live waveform stream (two new source files), `-json` replies, `processes`, `step`, `breakpoint` | 0001 to 0005 | `json1`, `procs1`, `step1` |
+| `04-verilog-timing` | `min:typ:max` timing check limits, part selects in specify, `$setuphold`/`$recrem`, edge events, limits in timescale units, rise/fall/turn-off delays on continuous assignments, `x`/`z` delays are zero; node layout change; **needs PR 1** | none (former change sets 15, 24, 25, 37) | `vspecmtm1`, `vsetuphold1`, `vassigndel1`, `vxdelay1` |
+| `05-verilog-hierarchy` | hierarchical names through generate blocks, `defparam`, hierarchical task and function calls, single-item generate blocks; node layout change; independent | none (former 18, 19, 23, 27) | `vgenhref1`, `vdefparam1`, `vhiercall1`, `vgenitem1`, unit test `test_hiercall1` |
+| `06-verilog-language` | twelve Verilog fixes and features found with FPGA vendor libraries (parser, gate arrays, specparams, `$realtobits`/`$bitstoreal`, `$isunknown`, `tri0`/`tri1`, time-zero net events, input ports, task outputs); node layout change; scheduling change at time zero; independent | none (former 16, 17, 20, 21, 22, 26, 28, 29, 31, 32, 33, 34) | twelve, `vemptyarg1` ... `vtaskout1` |
+| `07-interactive-debugger` | shell: port modes, end of run, source debugger (JIT debug hook), changed array elements and Verilog memories in dumps, array elements/`deposit`/`readmem`, `restart`, coverage from the shell, `--cover-export --format=json`, `$stop`, `describe` of Verilog, time breakpoints set while stopped, Ctrl-C ending a run (also Windows Ctrl-Break); gold change `issue1362`, `issue1406`; **needs PR 3** | none (former 04 to 09, 11 to 14, 30, 35, 36, 40 and 41) | 25 regression tests, unit tests `test_debug1`, `test_debug2`, `test_force2` |
+| `08-generic-overrides` | `-g` paths through generate statements and blocks, every match, `*` patterns, `--generic-default`; `-g` of a physical subtype; changed meaning of dotted `-g` paths; independent | none (former 10, 39) | `genpath1`, `genpath2`, `genphys1` |
+| `09-sdf-annotation` | SDF back-annotation of VITAL generics and Verilog timing checks; **needs PR 1, 4, 5 and 8** | none (former 38) | `sdf1`, `vsdf1`, unit tests `test_values1`, `test_values2` |
+| `10-shell-describe-locations` | shell `describe -location`: file, line and column of declarations, design unit and instantiation line of regions, a collapsed port reports its own port declaration; generics, constants and process variables by path; the block of a Verilog module instance gets the instance location; **needs PR 3 and 7** (applies and builds on 3 alone, its Verilog tests need the Verilog `describe` of 7) | none (change set 42, 2026-11-14) | `descloc1`, `descloc2`, `descloc3` |
+
+On 2026-11-14 the thirty-six change sets that were prepared as PRs 04 to 39 were merged into the six pull requests above, so that the
+maintainer gets fewer, topic sized pull requests. Each `PR.md` keeps the motivation, changes, compatibility notes, tests and limitations of
+the parts it contains, grouped by sub-topic, and says how it can be split again if the maintainer prefers smaller steps (07 lists its
+thirteen parts in order). The former folders are in `D:/tmp/upstream-pre-regroup-20261114-120608/`; `kernel/PATCHES.md` maps old to new.
+Their tests that are `shell` tests run on Linux only (`run_regr` skips them on Windows).
+
+Compatibility points collected from the former texts and repeated in the new `PR.md` files: node layout changes (01, 04, 05, 06: `make
+bootstrap`); changed gold files `issue1362`, `issue1406` (07); changed meaning of dotted `-g` paths (08); events at time zero on driven
+Verilog nets (06); IEEE section numbers written from memory (04, 05, 06, 07, 09: check or drop them); and a suggestion to discuss the large
+parts with the maintainer first (section 12).
+
+**Which version of `02-bug-fixes.patch` was sent:** the folder holds the version of 2026-11-13, whose include hunk in `src/tcl/tcl-shell.c`
+has two trailing context lines; the older version (`D:/tmp/lvdsim-s5/upstream-before/02-bug-fixes/02-bug-fixes.patch`) has three. Same
+change otherwise. With the older version, 07 still applies after 02, but 02 does not apply after 07; if upstream merges 02 first nothing
+has to be done, otherwise 02 needs a trivial rebase.
 
 Patch 0017 of the rebased series (a MinGW only guard for `strndup` in `test/run_regr.c`) is a harness fix for the lvdsim Windows build and is not part of any pull request.
 
@@ -76,6 +101,42 @@ and `--do`); do that if the maintainer wants the options documented.
 each patch alone on the base, then the three together, with a full build, the unit tests and the whole regression suite (`make check`), the new tests by hand in
 normal and reheat mode, the full `run_regr -r` for PR 2 and the combination, and each new test on the unpatched base with only the test files added.
 Not run: the Windows (MSYS2) build of the pull request trees, the MSVC build, builds without `--enable-tcl`, `make check` with sanitizers, or any other LLVM version.
+
+The next paragraphs use the former numbering (change sets 04 to 39, now merged into 04 to 09).
+
+Patches 7 to 11 (2026-11-13): each built and tested on a fresh clone of `0b2837794` with only its prerequisites (`make check`, the new tests
+with and without `-r`), all eleven together with `make check`, `run_regr` and `run_regr -r` (1541 of 1541), and 362 orders of the eleven patches
+applied to one index, all giving the tree of the fork working tree (`VERIFY.md`, last section). The include hunk of `02-bug-fixes.patch` was
+trimmed to two trailing context lines for this (same change).
+
+Patch 12 (2026-11-14): all twelve together on a fresh clone of `0b2837794` (`make check`, `run_regr` and `run_regr -r` 1543 of 1543, unit tests
+1179 checks), and 301 orders applied to one index, all giving the tree of the fork working tree (`VERIFY.md`, "2026-11-14, patch 12"). Not built:
+the tree with only its prerequisites (it applies there).
+
+Patches 15 to 22 (2026-11-14): each built and tested alone on a fresh clone of `0b2837794` (19 with 18): unit tests and the whole `run_regr`; all
+twenty-two together with unit tests (1179 checks), `run_regr` and `run_regr -r` (1553 of 1553); 340 orders of the twenty-two applied to one index,
+all giving the tree of the fork working tree (`VERIFY.md`, "2026-11-14, patches 15 to 22").
+
+Patches 23 to 29 (2026-11-14, later): each built and tested alone on a fresh clone of `0b2837794` (24 with 01): unit tests and the whole
+`run_regr`; all twenty-nine together with unit tests, `run_regr` and `run_regr -r`; 340 orders of the twenty-nine applied to one index, all
+giving the tree of the fork working tree (`VERIFY.md`, "2026-11-14, patches 23 to 29"; the numbers are there).
+
+Patches 30 to 39 (2026-11-14, night): each built and tested on a fresh clone of `0b2837794` with exactly its prerequisites: unit tests and the
+whole `run_regr`; all thirty-nine together with unit tests (1182 checks), `run_regr` and `run_regr -r` (1571 of 1571); 340 orders of the
+thirty-nine applied to one index, all giving the tree of the fork working tree (`VERIFY.md`, "2026-11-14, patches 30 to 39"). Building 36 on its
+prerequisites showed that **12 needs 07 to compile** (it frees a member that 07 adds), so 13 and 36 need 07 as well.
+
+Regrouped 04 to 09 (2026-11-14): each built and tested on a fresh clone of `0b2837794` with exactly its prerequisites (0 warnings, unit
+tests and the whole `run_regr`, all passing: 1520, 1517, 1525, 1537, 1516, 1529 tests); all nine together with unit tests (1182 checks),
+`run_regr` and `run_regr -r` (1571 of 1571); all 18144 dependency-respecting orders of the nine applied to one index, all giving the tree of
+the fork working tree (`VERIFY.md`, "2026-11-14, regrouped patches 04 to 09").
+
+PR 10 (2026-11-14): made from the fork working tree (change set 42) against `0b2837794` + 03; 01 to 09 unchanged. All 120960 orders of 01 to 10
+that respect the dependencies applied to one index give one tree, identical to the fork working tree in all 179 files; fresh clones of
+`0b2837794`: 03 + 07 + 10 builds with 0 warnings, unit tests (1179 checks) and the whole `run_regr` pass (1544 of 1544); 03 + 10 builds with 0
+warnings and passes everything but the two Verilog tests (they need 07); all ten together: unit tests (1182 checks), `run_regr` and `run_regr -r`
+1578 of 1578; Windows (MSYS2, `kernel/nvc/build`) `run_regr` 1492 ok, 86 skipped (`disabled on windows`), the two skipped new shell tests run by
+hand and pass (`VERIFY.md`, "2026-11-14, pull request 10").
 
 ## 4. Copyright and licence
 
@@ -147,15 +208,26 @@ Use `git apply --3way` or `patch -p1` if the base is newer. Do the same for `02-
 base: the patches do not depend on each other. Check the result with `git log --format='%h %an <%ae> %s' -1` and `git show --stat`. The disclosure line of `PR.md` is not in the commit message
 unless you add it.
 
+04 to 09 are made against `0b2837794` plus their prerequisites: start the branch of 04 from master once PR 1 is merged (or from your PR 1 branch,
+saying so in the description), 07 from master with PR 3, 09 from a branch holding 01, 04, 05 and 08. 05, 06 and 08 start from master.
+
 ## 8. The order of the pull requests, and why
 
-They are independent, so any order works technically. A suggested one, by risk:
+01 to 03 have been sent. Of the rest, 05, 06 and 08 are independent; 04 needs 01, 07 needs 03, 09 needs 01, 04, 05 and 08, 10 needs 03 and 07. A suggested
+order, by risk (rows 2, 1, 3 kept for the record):
 
 | # | Folder | Lines (src/test) | Risk | Why here |
 |---|--------|------------------|------|----------|
 | 2 | `02-bug-fixes` | src +89 -23, test +222 | low to medium | small, separately explained fixes; item 4 touches the scheduler loop and item 6 is a design question |
 | 1 | `01-verilog-time-delay-timeformat` | src +402 -9, test +183 -12 | medium | changes the output of existing designs (`$time`, `%t`, `ivtest2` gold file), node layout change, and carries the rounding question |
 | 3 | `03-interactive-mode` | src +1163 -73, test +271 | highest | new features and two new source files; ask first (section 12) |
+| 6 | `06-verilog-language` | src +572 -97, test +372 | low to medium | independent; twelve small parts, each with a test; the time-zero event change is the one to discuss (ask whether the maintainer prefers another model) |
+| 5 | `05-verilog-hierarchy` | src +532 -53, test +248 | medium | independent; changes where hierarchical references are resolved, adds `defparam` and hierarchical calls (new use of `bind_external`); can be split |
+| 8 | `08-generic-overrides` | src +184 -38, test +116 | low to medium | independent; changes which instances a dotted `-g` reaches; plain `-gNAME` unchanged |
+| 4 | `04-verilog-timing` | src +195 -36, test +134 | low to medium (once PR 1 is in) | needs PR 1; `$setuphold`/`$recrem` now report violations, limits follow the timescale |
+| 7 | `07-interactive-debugger` | src +3570 -212, test +1743 -15 | high (once PR 3 is in) | needs PR 3; large: JIT debug hook, `restart` (brings back a command upstream disabled), new commands; ask first, offer the listed series |
+| 10 | `10-shell-describe-locations` | src +230 -4, test +268 | low (once PR 3 and 7 are in) | small; a new option of `describe`, replies without it unchanged; one elaboration line (location of a Verilog instance block) |
+| 9 | `09-sdf-annotation` | src +1120 -101, test +379 | medium to high (once PR 1, 4, 5, 8 are in) | large; new option semantics for `--sdf`; ask first |
 
 The maintainer has little review time: smaller, clearly correct changes first build trust. Open one pull request at a time or a few at a time. Because no patch touches `NEWS.md` and the test
 lists are edited at different places, a merge of one does not make the next one conflict; after a merge you still do `git fetch upstream && git rebase upstream/master` on the others.
@@ -232,6 +304,10 @@ use `git apply --3way` and fix the context of `test/regress/testlist.txt` by han
 | 2.6 | Why this lookup order? Why no test? | Library of the instantiating unit first, then the other loaded libraries, like a VHDL component without binding. `run_regr` has one work library, so there is no regression test; the reproducers are in `PR.md`. Tell me which order you prefer. |
 | 2.7 | Why not fix the Windows exit handlers? | The deadlock is in the C runtime exit lock and not in NVC; draining the async queue first is what `fatal_exit()` already does. There is no test because it needs a compilation in flight. |
 | 3 | Why JSON, and why not parse the text replies? | Parsing the human readable replies of a pipe is fragile. `-json` is opt-in and does not change the text replies. Tell me if you prefer other command names or a different reply format. |
+| 7 (debugger) | Why not a hook in compiled code? | Compiled code has no per-line hook; adding one would cost in every simulation. With a line breakpoint the design runs in the interpreter; without one, compiled code is unchanged. |
+| 7 (debugger) | Why copies of the IR with `J_DEBUG` markers, and not markers in the IR itself or a check in the interpreter loop? | Measured on a loop-heavy design, interpreter only, without any breakpoint: markers always in the IR made it 14 % slower, a per-instruction line test in the loop 17 %, a second instantiation of the loop 49 % (GCC no longer inlines the instruction helpers). The copies exist only while a hook is installed, so the normal IR and loop are unchanged (571 ms against 560 ms, about the spread of repeated runs). |
+| 7 (debugger) | Why does the shell read commands inside the hook? | A stopped process cannot return to the scheduler without losing its frames. The hook keeps the C stack alive and the shell reads commands from it; `run` and `step` set a flag and return, so the frames are read in place (`stack`, `locals`). Tcl scripts use `-command` on the breakpoint or step. |
+| 7 (debugger) | Why is `statereg` renumbered in `jit_do_dce`? | DCE renumbers registers; the debugger needs the register that holds a frame's context pointer after optimisation. |
 | 3 | Why a new waveform format? | An FST file cannot be read before it is closed. The live stream is an append only text format. If you would rather make FST readable during the run (hierarchy written up front, `fstWriterFlushContext` after each `run`), drop item 2 of the patch (see section 12, draft B). |
 | all | Does `make check` pass? | See `kernel/upstream/VERIFY.md` for the numbers per tree. |
 
@@ -296,6 +372,8 @@ to prepare today. In that case PR 3 is sent without the live stream: remove `src
 - [ ] Decided about AI disclosure (ask the maintainer, or state it in the PR text); line `AI-DISCLOSURE: decide before submitting` replaced or removed in every `PR.md` text you paste
 - [ ] Identity set in the repository you commit from; `git log --format='%an <%ae>' -1` shows your name
 - [ ] Decided about the header of `src/rt/wave-live.[ch]` (section 4) before PR 3
+- [ ] Fill in the PR numbers of 01, 02, 03 (`#TBD-01`, `#TBD-02`, `#TBD-03` in the `PR.md` texts and `kernel/PATCHES.md`); check which version of `02-bug-fixes.patch` was sent (section 2)
+- [ ] PR 4 only after PR 1, PR 7 only after PR 3, PR 10 after PR 7, PR 9 last (after 1, 4, 5 and 8); replace the `#TBD-NN` placeholders with the real links
 - [ ] Every diff read by you; Linux build and `make check` run by you on the final branch
 - [ ] PR 1: `make bootstrap` after applying; rounding question of `$time` kept in the description
 - [ ] Issues A, B, C posted before PR 3 and before item 6 of PR 2 (nothing opened as a PR until answered)

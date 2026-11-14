@@ -526,3 +526,86 @@ TEST_CASE("add wave -min/-max: a manual analog range needs a valid pair, otherwi
     REQUIRE(back.root().children[0].analog.min == -1e-12);
     REQUIRE(back.root().children[0].analog.max == 2.5e9);
 }
+
+TEST_CASE("add wave -vbus with -format analog makes an analog bus, and the do script keeps it") {
+    const WaveStore st = makeStore();
+    DisplayModel m;
+    REQUIRE(applyAddWave(m, st,
+                         parseAddWave({"-vbus", "vb", "-radix", "signed", "-format", "analog-interpolated", "-min",
+                                       "-4", "-max", "3", "-height", "66", "/tb/dut/count@3", "/tb/clk"})
+                             .value()) == 1);
+    const DisplayItem& bus = m.root().children.back();
+    REQUIRE(bus.kind == ItemKind::VirtualBus);
+    CHECK(bus.analog.enabled);
+    CHECK_FALSE(bus.analog.autoRange);
+    CHECK(bus.analog.min == -4.0);
+    CHECK(bus.analog.max == 3.0);
+    CHECK(bus.analog.heightRows == 3);
+    CHECK(bus.analog.interpolation == Interpolation::Linear);
+    CHECK(analogSigned(bus));
+
+    const std::string script = exportDoScript(m);
+    CHECK(script.find("add wave -vbus vb -radix signed -format analog-interpolated -min -4 -max 3 -height 66") !=
+          std::string::npos);
+    DisplayModel back;
+    importDoScript(script, back, st);
+    REQUIRE(back.root().children.size() == 1);
+    const DisplayItem& again = back.root().children.back();
+    CHECK(again.analog.enabled);
+    CHECK(again.analog.min == -4.0);
+    CHECK(again.members == bus.members);
+
+    // without -format the bus is a plain bus, and its line has no analog options
+    DisplayModel plain;
+    applyAddWave(plain, st, parseAddWave({"-vbus", "p", "/tb/clk", "/tb/rst"}).value());
+    CHECK_FALSE(plain.root().children.back().analog.enabled);
+    CHECK(exportDoScript(plain).find("-format") == std::string::npos);
+}
+
+TEST_CASE("analog rows read bits as signed with the signed setting or the signed radix") {
+    DisplayItem it = DisplayModel::makeSignal("x", Radix::Hex);
+    CHECK_FALSE(analogSigned(it));
+    it.radix = Radix::Signed;
+    CHECK(analogSigned(it));
+    it.radix = Radix::Unsigned;
+    it.analog.isSigned = true;
+    CHECK(analogSigned(it));
+    DisplayItem bus = DisplayModel::makeBus("b", {"x", "y"}, Radix::Signed);
+    CHECK(analogSigned(bus));
+}
+
+TEST_CASE("add wave -height sets the row height in pixels of every row kind and the script keeps it") {
+    const WaveStore st = makeStore();
+    DisplayModel m;
+    REQUIRE(applyAddWave(m, st, parseAddWave({"-height", "35", "/tb/clk"}).value()) == 1);
+    REQUIRE(applyAddWave(m, st, parseAddWave({"-height", "50", "-vbus", "vb", "/tb/clk", "/tb/rst"}).value()) == 1);
+    REQUIRE(applyAddWave(m, st, parseAddWave({"-height", "28", "-divider", "D"}).value()) == 1);
+    REQUIRE(applyAddWave(m, st, parseAddWave({"-height", "19", "-label", "e", "-expr", "/tb/clk"}).value()) == 1);
+    REQUIRE(applyAddWave(m, st, parseAddWave({"-format", "analog", "-height", "80", "/tb/dut/count"}).value()) ==
+            1);
+    REQUIRE(applyAddWave(m, st, parseAddWave({"-height", "5", "/tb/rst"}).value()) == 1);
+    const auto& c = m.root().children;
+    CHECK(c[0].heightPx == 35);
+    CHECK(c[1].heightPx == 50);
+    CHECK(c[2].heightPx == 28);
+    CHECK(c[3].heightPx == 19);
+    CHECK(c[4].heightPx == 80); // exactly what was asked, not rounded to lines
+    CHECK(c[4].analog.heightRows == 4);
+    CHECK(c[5].heightPx == kMinRowHeightPx);
+
+    const std::string script = exportDoScript(m);
+    DisplayModel back;
+    importDoScript(script, back, st);
+    REQUIRE(back.root().children.size() == c.size());
+    for (std::size_t i = 0; i < c.size(); ++i) {
+        INFO(script);
+        CHECK(back.root().children[i].heightPx == c[i].heightPx);
+    }
+    // one -height per row, never two
+    std::size_t pos = 0, count = 0;
+    while ((pos = script.find("-height", pos)) != std::string::npos) {
+        ++count;
+        ++pos;
+    }
+    CHECK(count == c.size());
+}

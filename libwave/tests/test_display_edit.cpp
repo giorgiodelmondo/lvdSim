@@ -26,6 +26,8 @@ std::string shape(const DisplayItem& g) {
             out += "-" + c.label + "-";
             break;
         case ItemKind::VirtualBus:
+        case ItemKind::Expression:
+        case ItemKind::Compare:
             out += "{" + c.label + "}";
             break;
         case ItemKind::Group:

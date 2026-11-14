@@ -10,7 +10,17 @@ ROOT=$(cd "$HERE/../.." && pwd)
 export PATH
 command -v vcom > /dev/null 2>&1 || { echo "SKIP: lvdsim tools not on PATH"; exit 77; }
 K="$ROOT/kernel/nvc/build"
-if [ -z "$LVDSIM_NVC" ]; then
+if [ -z "$LVDSIM_NVC" ] && [ "$(uname -s)" = Linux ]; then
+    # The kernel build tree in the checkout may be the Windows one (nvc.exe is "executable" on a /mnt drive under WSL but cannot
+    # work with Linux paths). Use a Linux build of the fork: the newest ~/build/nvc-fork-linux* whose version has the kernel commit.
+    kc=$(git -C "$ROOT/kernel/nvc" rev-parse --short=9 HEAD 2> /dev/null)
+    for d in $(ls -dt "$HOME"/build/nvc-fork-linux* 2> /dev/null); do
+        if [ -x "$d/bin/nvc" ] && [ -d "$d/lib" ] && "$d/bin/nvc" --version 2> /dev/null | grep -q "${kc:-@none@}"; then
+            export LVDSIM_NVC="$d/bin/nvc" LVDSIM_NVC_LIBDIR="$d/lib"; break
+        fi
+    done
+    [ -z "$LVDSIM_NVC" ] && [ -x "$K/bin/nvc" ] && export LVDSIM_NVC="$K/bin/nvc" LVDSIM_NVC_LIBDIR="$K/lib"
+elif [ -z "$LVDSIM_NVC" ]; then
     [ -x "$K/bin/nvc.exe" ] && export LVDSIM_NVC="$K/bin/nvc.exe" LVDSIM_NVC_LIBDIR="$K/lib" LVDSIM_NVC_DLLDIR="${LVDSIM_NVC_DLLDIR:-C:/msys64/mingw64/bin}"
     [ -z "$LVDSIM_NVC" ] && [ -x "$K/bin/nvc" ] && export LVDSIM_NVC="$K/bin/nvc" LVDSIM_NVC_LIBDIR="$K/lib"
 fi

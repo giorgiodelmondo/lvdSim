@@ -393,8 +393,11 @@ private slots:
 
     void memoryRunsOutGracefully() {
         gpu_->renderer().clearCache();
-        const int perAtlas = (GpuWaveRenderer::kAtlasWidth / GpuWaveRenderer::kTileWidth) * (GpuWaveRenderer::kAtlasHeight / 22);
-        const int total = perAtlas * 4 + 300;  // more than four atlases of this height hold
+        // the atlases of one height grow (4 lines of tiles, then 4 times more each, up to the full size)
+        int capacity = 0;
+        for (std::size_t k = 0; k < GpuWaveRenderer::kMaxAtlasesPerHeight; ++k)
+            capacity += (GpuWaveRenderer::kAtlasWidth / GpuWaveRenderer::kTileWidth) * GpuWaveRenderer::atlasRows(22, k);
+        const int total = capacity + 300;  // more than all atlases of this height hold
 
         GpuFrame f;
         f.size = QSize(256, 22);
@@ -409,7 +412,7 @@ private slots:
         f.geometryFor = [](const GpuTileDraw&) { return TileGeometry{}; };
         gpu_->render(f);
         QCOMPARE(gpu_->renderer().lastFrame().tilesSkipped, std::size_t{300});  // everything is needed at once: nothing to evict
-        QCOMPARE(gpu_->renderer().cachedTiles(), static_cast<std::size_t>(perAtlas * 4));
+        QCOMPARE(gpu_->renderer().cachedTiles(), static_cast<std::size_t>(capacity));
 
         // the next frame needs different tiles: the oldest ones are evicted
         f.tiles.clear();
@@ -422,7 +425,7 @@ private slots:
         gpu_->render(f);
         QCOMPARE(gpu_->renderer().lastFrame().tilesSkipped, std::size_t{0});
         QCOMPARE(gpu_->renderer().lastFrame().tilesRasterised, std::size_t{100});
-        QCOMPARE(gpu_->renderer().cachedTiles(), static_cast<std::size_t>(perAtlas * 4));
+        QCOMPARE(gpu_->renderer().cachedTiles(), static_cast<std::size_t>(capacity));
         gpu_->renderer().clearCache();
     }
 };

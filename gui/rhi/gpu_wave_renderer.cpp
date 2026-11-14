@@ -166,6 +166,54 @@ std::size_t GpuWaveRenderer::atlasCount() const noexcept {
     return n;
 }
 
+int GpuWaveRenderer::atlasRows(int slotHeight, std::size_t index) noexcept {
+    const int full = std::max(1, kAtlasHeight / std::max(1, slotHeight));
+    int rows = kFirstAtlasRows;
+    for (std::size_t i = 0; i < index && rows < full; ++i) rows *= 4;
+    return std::min(rows, full);
+}
+
+std::size_t GpuWaveRenderer::atlasBytes() const noexcept {
+    std::size_t n = 0;
+    for (const auto& [h, v] : atlases_)
+        for (const auto& a : v) n += std::size_t{kAtlasWidth} * static_cast<std::size_t>(a->rows * a->slotHeight) * 4;
+    return n;
+}
+
+void GpuWaveRenderer::dropHeight(int heightPx) {
+    for (auto it = slots_.begin(); it != slots_.end();) {
+        if (it->second.atlas->slotHeight == heightPx) {
+            lru_.erase(it->second.lru);
+            it = slots_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    atlases_.erase(heightPx);
+    heightLastFrame_.erase(heightPx);
+}
+
+void GpuWaveRenderer::trimAtlases(std::size_t needed) {
+    while (atlasBytes() + needed > kAtlasBudgetBytes) {
+        int victim = -1;
+        std::uint64_t oldest = frameNumber_;
+        for (const auto& [h, list] : atlases_) {
+            const auto seen = heightLastFrame_.find(h);
+            const std::uint64_t last = seen == heightLastFrame_.end() ? 0 : seen->second;
+            if (last >= frameNumber_) continue;  // drawn in this frame
+            bool holdsAnchor = false;
+            for (const auto& a : list) holdsAnchor = holdsAnchor || a.get() == anchor_;
+            if (holdsAnchor) continue;
+            if (victim < 0 || last < oldest) {
+                victim = h;
+                oldest = last;
+            }
+        }
+        if (victim < 0) return;  // everything left is needed now
+        dropHeight(victim);
+    }
+}
+
 bool GpuWaveRenderer::initialize(QRhi* rhi, QRhiRenderPassDescriptor* targetPass, QRhiTexture::Format colorFormat) {
     // QRhiWidget initialises again when its colour texture is recreated (every resize). Nothing to redo when the
     // device, pass layout and format are unchanged, and the tiles on the GPU stay valid.
@@ -210,6 +258,8 @@ void GpuWaveRenderer::releaseResources() {
     atlases_.clear();
     slots_.clear();
     lru_.clear();
+    heightLastFrame_.clear();
+    anchor_ = nullptr;
     pipelines_.reset();
     delete fillVbuf_;
     delete quadVbuf_;
@@ -239,7 +289,7 @@ GpuWaveRenderer::Atlas* GpuWaveRenderer::createAtlas(int slotHeight) {
     auto a = std::make_unique<Atlas>();
     a->slotHeight = slotHeight;
     a->cols = kAtlasWidth / kTileWidth;
-    a->rows = std::max(1, kAtlasHeight / slotHeight);
+    a->rows = atlasRows(slotHeight, atlases_[slotHeight].size());
 
     a->tex = rhi_->newTexture(format_, QSize(kAtlasWidth, a->rows * slotHeight), 1, QRhiTexture::RenderTarget);
     if (!a->tex->create()) return nullptr;
@@ -277,6 +327,7 @@ GpuWaveRenderer::Atlas* GpuWaveRenderer::createAtlas(int slotHeight) {
         pipelines_->quadMain = makePipeline(rhi_, a->quadSrb, targetPass_, pipelines_->quadVs, pipelines_->quadFs, true, true);
         if (pipelines_->fillAtlas == nullptr || pipelines_->replaceAtlas == nullptr || pipelines_->quadMain == nullptr) return nullptr;
         pipelines_->atlasReady = true;
+        anchor_ = a.get();
     }
 
     Atlas* raw = a.get();
@@ -285,23 +336,12 @@ GpuWaveRenderer::Atlas* GpuWaveRenderer::createAtlas(int slotHeight) {
 }
 
 GpuWaveRenderer::Slot* GpuWaveRenderer::acquire(const TileKey& key, int heightPx) {
-    constexpr std::size_t kMaxAtlasesPerHeight = 4;
     auto& list = atlases_[heightPx];
 
     Atlas* atlas = nullptr;
-    for (auto& a : list)
-        if (!a->freeSlots.empty()) {
-            atlas = a.get();
-            break;
-        }
-    if (atlas == nullptr && list.size() < kMaxAtlasesPerHeight) atlas = createAtlas(heightPx);
-
     int index = -1;
-    if (atlas != nullptr) {
-        index = atlas->freeSlots.back();
-        atlas->freeSlots.pop_back();
-    } else {
-        // Evict the least recently used tile of this height that this frame does not need.
+    // Reuses the slot of the least recently used tile of this height that this frame does not need.
+    auto evictOne = [&] {
         for (auto it = lru_.rbegin(); it != lru_.rend(); ++it) {
             auto s = slots_.find(*it);
             if (s == slots_.end() || s->second.atlas->slotHeight != heightPx || s->second.lastFrame == frameNumber_) continue;
@@ -309,9 +349,32 @@ GpuWaveRenderer::Slot* GpuWaveRenderer::acquire(const TileKey& key, int heightPx
             index = s->second.index;
             lru_.erase(std::next(it).base());
             slots_.erase(s);
+            return true;
+        }
+        return false;
+    };
+
+    for (auto& a : list)
+        if (!a->freeSlots.empty()) {
+            atlas = a.get();
             break;
         }
-        if (atlas == nullptr) return nullptr;
+    if (atlas == nullptr && list.size() < kMaxAtlasesPerHeight) {
+        // A new atlas only while the memory budget allows it (after freeing heights no longer drawn); over the
+        // budget the height recycles its own old tiles first, and grows only when this frame needs every slot.
+        const std::size_t need =
+            std::size_t{kAtlasWidth} * static_cast<std::size_t>(atlasRows(heightPx, list.size()) * heightPx) * 4;
+        trimAtlases(need);
+        if (atlasBytes() + need <= kAtlasBudgetBytes || list.empty() || !evictOne()) atlas = createAtlas(heightPx);
+    }
+
+    if (index >= 0) {
+        // a recycled slot
+    } else if (atlas != nullptr) {
+        index = atlas->freeSlots.back();
+        atlas->freeSlots.pop_back();
+    } else if (!evictOne()) {
+        return nullptr;
     }
 
     lru_.push_front(key);
@@ -345,6 +408,7 @@ void GpuWaveRenderer::render(QRhiCommandBuffer* cb, QRhiRenderTarget* target, co
     };
     std::vector<Placed> placed;
     std::vector<std::pair<Slot*, TileGeometry>> jobs;
+    for (const GpuTileDraw& t : frame.tiles) heightLastFrame_[t.heightPx] = frameNumber_;
 
     // Tiles already on the GPU are marked as used first so that making room for new ones cannot evict them.
     for (const GpuTileDraw& t : frame.tiles) {

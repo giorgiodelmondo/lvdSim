@@ -64,6 +64,13 @@ namespace eval ::lvd {
 # --- run ---------------------------------------------------------------------------------------
 rename run ::lvd::nativeRun
 
+# True while a process is stopped at a source line (the native stack command only works then).
+proc ::lvd::stoppedInProcess {} {
+    expr {[llength [info commands ::stack]] > 0 && ![catch {::stack}]}
+}
+
+# While a process is stopped at a source line, run without a time (and run -continue) resumes the
+# suspended run; a time is refused by the kernel then, with its own message.
 proc run {args} {
     set all 0
     set rest {}
@@ -72,14 +79,14 @@ proc run {args} {
         switch -- $a {
             -all      { set all 1 }
             -json     { set json {-json} }
-            -continue { }
+            -continue { if {[::lvd::stoppedInProcess]} { set all 1 } }
             -step - -next - -over - -out {
-                return -code error "run $a is not supported yet (needs stepping support in the kernel)"
+                return -code error "run $a is not supported: use step -into, step -over or step -out"
             }
             default   { lappend rest $a }
         }
     }
-    if {$all} {
+    if {$all || ([llength $rest] == 0 && [::lvd::stoppedInProcess])} {
         ::lvd::nativeRun {*}$json
     } elseif {[llength $rest] == 0} {
         ::lvd::nativeRun {*}$json $::lvd::defaultRunFs fs
@@ -130,13 +137,14 @@ proc quit {args} {
 
 # --- commands that need a GUI or are accepted without effect ----------------------------------
 proc add {what args} {
-    # In the GUI "add wave" fills the wave window; in batch mode waveforms come from -wlf or -lvdwave.
+    # In the GUI "add wave" fills the wave window, "add list" the List dock and "add mem" shows a memory in the
+    # Memory dock; in batch mode waveforms come from -wlf or -lvdwave.
     ::lvd::notify add $what {*}$args
 }
 proc delete {what args} { ::lvd::notify delete $what {*}$args }
 proc log {args} { return }
 proc wave {args} { return }
-proc view {args} { return }
+proc view {args} { ::lvd::notify view {*}$args }   ;# GUI: shows the named windows (view memory, view list)
 proc radix {args} { return }
 proc configure {args} { return }
 proc transcript {args} { return }

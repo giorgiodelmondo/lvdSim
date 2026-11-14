@@ -10,8 +10,8 @@ using namespace lvd::wave;
 namespace {
 
 constexpr int kH = 22;
-constexpr int kHi = 3;        // top level row of pixels
-constexpr int kLo = kH - 4;   // bottom level row
+constexpr int kHi = 3;      // top level row of pixels
+constexpr int kLo = kH - 4; // bottom level row
 
 TileRequest request(const RowSource& src, double tpp, long long tile = 0, int h = kH) {
     TileRequest r;
@@ -23,9 +23,11 @@ TileRequest request(const RowSource& src, double tpp, long long tile = 0, int h 
     return r;
 }
 
-bool drawn(const QImage& img, int x, int y) { return qAlpha(img.pixel(x, y)) > 0; }
+bool drawn(const QImage& img, int x, int y) {
+    return qAlpha(img.pixel(x, y)) > 0;
+}
 
-}  // namespace
+} // namespace
 
 class TestPainterRenderer : public QObject {
     Q_OBJECT
@@ -45,14 +47,14 @@ private slots:
         QCOMPARE(img.width(), 256);
         QCOMPARE(img.height(), kH);
 
-        QVERIFY(drawn(img, 50, kLo));     // low level before the edge
+        QVERIFY(drawn(img, 50, kLo)); // low level before the edge
         QVERIFY(!drawn(img, 50, kHi));
-        QVERIFY(drawn(img, 150, kHi));    // high level
+        QVERIFY(drawn(img, 150, kHi)); // high level
         QVERIFY(!drawn(img, 150, kLo));
-        QVERIFY(drawn(img, 100, 10));     // rising edge is a vertical line
-        QVERIFY(drawn(img, 200, 10));     // falling edge
-        QVERIFY(drawn(img, 240, kLo));    // low again
-        QVERIFY(!drawn(img, 50, 10));     // nothing between the levels away from edges
+        QVERIFY(drawn(img, 100, 10));  // rising edge is a vertical line
+        QVERIFY(drawn(img, 200, 10));  // falling edge
+        QVERIFY(drawn(img, 240, kLo)); // low again
+        QVERIFY(!drawn(img, 50, 10));  // nothing between the levels away from edges
     }
 
     void nothingBeforeFirstChange() {
@@ -73,7 +75,7 @@ private slots:
         st.mutableSignal(id).appendLogic(0, "1");
         SignalSource src(st.signal(id), nullptr, false);
         PainterRenderer r;
-        const QImage img = r.renderTile(request(src, 1.0, /*tile*/ 40));  // far beyond the data
+        const QImage img = r.renderTile(request(src, 1.0, /*tile*/ 40)); // far beyond the data
         QVERIFY(drawn(img, 10, kHi));
         QVERIFY(drawn(img, 250, kHi));
     }
@@ -87,10 +89,10 @@ private slots:
         SignalSource src(st.signal(id), nullptr, false);
         PainterRenderer r;
         const QImage img = r.renderTile(request(src, 1.0));
-        QVERIFY(drawn(img, 50, 10));  // unknown is a filled band
+        QVERIFY(drawn(img, 50, 10)); // unknown is a filled band
         QVERIFY(qRed(img.pixel(50, kHi)) > qBlue(img.pixel(50, kHi)));
         const int mid = kH / 2;
-        QVERIFY(drawn(img, 150, mid));  // high impedance is a mid level line
+        QVERIFY(drawn(img, 150, mid)); // high impedance is a mid level line
         QVERIFY(qBlue(img.pixel(150, mid)) > qRed(img.pixel(150, mid)));
     }
 
@@ -98,10 +100,11 @@ private slots:
         WaveStore st;
         const SignalId id = st.addSignal(kRootScope, "clk", SignalKind::Logic, 1);
         Signal& s = st.mutableSignal(id);
-        for (Time t = 0; t < 5000; ++t) s.appendLogic(t, (t & 1) ? "1" : "0");
+        for (Time t = 0; t < 5000; ++t)
+            s.appendLogic(t, (t & 1) ? "1" : "0");
         SignalSource src(st.signal(id), nullptr, false);
         PainterRenderer r;
-        const QImage img = r.renderTile(request(src, 16.0));  // 16 changes per pixel
+        const QImage img = r.renderTile(request(src, 16.0)); // 16 changes per pixel
         for (int x : {5, 100, 200}) {
             QVERIFY(drawn(img, x, kHi));
             QVERIFY(drawn(img, x, 10));
@@ -120,10 +123,10 @@ private slots:
         PainterRenderer r;
         const QImage img = r.renderTile(request(src, 1.0));
 
-        QVERIFY(drawn(img, 50, kHi));     // outline top
-        QVERIFY(drawn(img, 50, kLo));     // outline bottom
-        QVERIFY(!drawn(img, 50, 10));     // known value: hollow
-        QVERIFY(drawn(img, 150, 10));     // value with X is filled
+        QVERIFY(drawn(img, 50, kHi)); // outline top
+        QVERIFY(drawn(img, 50, kLo)); // outline bottom
+        QVERIFY(!drawn(img, 50, 10)); // known value: hollow
+        QVERIFY(drawn(img, 150, 10)); // value with X is filled
         QVERIFY(qRed(img.pixel(150, 10)) > qBlue(img.pixel(150, 10)));
     }
 
@@ -131,7 +134,8 @@ private slots:
         WaveStore st;
         const SignalId id = st.addSignal(kRootScope, "b", SignalKind::Logic, 8);
         Signal& s = st.mutableSignal(id);
-        for (Time t = 0; t < 20000; ++t) s.appendLogic(t, (t & 1) ? "10101010" : "01010101");
+        for (Time t = 0; t < 20000; ++t)
+            s.appendLogic(t, (t & 1) ? "10101010" : "01010101");
         SignalSource src(st.signal(id), nullptr, false);
         PainterRenderer r;
         const QImage img = r.renderTile(request(src, 64.0));
@@ -143,7 +147,8 @@ private slots:
         WaveStore st;
         const SignalId id = st.addSignal(kRootScope, "v", SignalKind::Real, 64);
         Signal& s = st.mutableSignal(id);
-        for (Time t = 0; t < 300; t += 10) s.appendReal(t, (t / 10) % 2 == 0 ? 0.0 : 10.0);
+        for (Time t = 0; t < 300; t += 10)
+            s.appendReal(t, (t / 10) % 2 == 0 ? 0.0 : 10.0);
         const NumericIndex idx = NumericIndex::build(st.signal(id));
         SignalSource src(st.signal(id), &idx, true);
         QCOMPARE(src.waveClass(), WaveClass::Analog);
@@ -151,14 +156,15 @@ private slots:
         const int h = 4 * kH;
         PainterRenderer r;
         const QImage img = r.renderTile(request(src, 1.0, 0, h));
-        QVERIFY(drawn(img, 5, h - 4));    // low value near the bottom
-        QVERIFY(drawn(img, 15, 3));       // high value near the top
-        QVERIFY(drawn(img, 10, 40));      // step edge between them
+        QVERIFY(drawn(img, 5, h - 4)); // low value near the bottom
+        QVERIFY(drawn(img, 15, 3));    // high value near the top
+        QVERIFY(drawn(img, 10, 40));   // step edge between them
 
         // Zoomed far out the envelope must still reach both extremes.
         WaveStore big;
         const SignalId bid = big.addSignal(kRootScope, "v", SignalKind::Real, 64);
-        for (Time t = 0; t < 100000; ++t) big.mutableSignal(bid).appendReal(t, (t % 2) ? 10.0 : 0.0);
+        for (Time t = 0; t < 100000; ++t)
+            big.mutableSignal(bid).appendReal(t, (t % 2) ? 10.0 : 0.0);
         const NumericIndex bidx = NumericIndex::build(big.signal(bid));
         SignalSource bsrc(big.signal(bid), &bidx, true);
         const QImage env = r.renderTile(request(bsrc, 400.0, 0, h));
@@ -175,7 +181,8 @@ private slots:
         PainterRenderer r;
         const QImage img = r.renderTile(request(src, 1.0, 0, 4 * kH));
         bool any = false;
-        for (int y = 0; y < img.height(); ++y) any = any || drawn(img, 20, y);
+        for (int y = 0; y < img.height(); ++y)
+            any = any || drawn(img, 20, y);
         QVERIFY(any);
     }
 
@@ -185,7 +192,8 @@ private slots:
         SignalSource src(st.signal(id), nullptr, false);
         PainterRenderer r;
         const QImage img = r.renderTile(request(src, 1.0));
-        for (int y = 0; y < img.height(); ++y) QVERIFY(!drawn(img, 10, y));
+        for (int y = 0; y < img.height(); ++y)
+            QVERIFY(!drawn(img, 10, y));
     }
 
     void virtualBusSource() {
@@ -196,12 +204,15 @@ private slots:
         st.mutableSignal(a).appendLogic(0, "0000");
         st.mutableSignal(a).appendLogic(100, "1111");
         st.mutableSignal(b).appendLogic(50, "1010");
-        BusSource bus(st, {"top.a", "top.b"});
-        QCOMPARE(bus.count(), std::size_t{3});  // union of times 0, 50, 100
+        WaveSpace space;
+        space.setCurrent(
+            std::shared_ptr<const WaveStore>(std::shared_ptr<const WaveStore>(), &st)); // not owned
+        BusSource bus(space, {"top.a", "top.b"});
+        QCOMPARE(bus.count(), std::size_t{3}); // union of times 0, 50, 100
         QCOMPARE(bus.time(1), Time{50});
         QCOMPARE(QString::fromStdString(bus.text(1, Radix::Hex)), QString("0A"));
         QCOMPARE(QString::fromStdString(bus.text(2, Radix::Hex)), QString("FA"));
-        QVERIFY(bus.isUnknown(0));   // b has no value at time 0
+        QVERIFY(bus.isUnknown(0)); // b has no value at time 0
         QVERIFY(!bus.isUnknown(1));
         QCOMPARE(bus.holdIndex(75), std::size_t{1});
         QCOMPARE(bus.holdIndex(0), std::size_t{0});
@@ -209,6 +220,36 @@ private slots:
         PainterRenderer r;
         const QImage img = r.renderTile(request(bus, 1.0));
         QVERIFY(drawn(img, 70, kHi));
+    }
+
+    void tileCacheByteBudget() {
+        // 4 x 4 ARGB = 64 bytes per small image, 1024 per tall one; budget 2048 bytes
+        TileCache cache(100, 2048);
+        auto key = [](long long tile, int h) {
+            TileKey k;
+            k.tile = tile;
+            k.heightPx = h;
+            return k;
+        };
+        for (long long i = 0; i < 10; ++i)
+            cache.put(key(i, 4), QImage(4, 4, QImage::Format_ARGB32));
+        QCOMPARE(cache.size(), std::size_t{10});
+        QCOMPARE(cache.bytes(), std::size_t{640});
+        cache.put(key(100, 64), QImage(4, 64, QImage::Format_ARGB32)); // 1024 bytes: still fits
+        QCOMPARE(cache.size(), std::size_t{11});
+        cache.put(key(101, 64), QImage(4, 64, QImage::Format_ARGB32)); // over: the older small ones go first
+        QCOMPARE(cache.bytes(), std::size_t{2048});
+        QCOMPARE(cache.size(), std::size_t{2});
+        QVERIFY(cache.find(key(101, 64)) != nullptr);
+        QVERIFY(cache.find(key(100, 64)) != nullptr);
+        QVERIFY(cache.find(key(0, 4)) == nullptr);
+        QVERIFY(cache.find(key(9, 4)) == nullptr);
+        // a single image larger than the budget is still kept (the one just drawn)
+        cache.put(key(200, 1000), QImage(4, 1000, QImage::Format_ARGB32));
+        QCOMPARE(cache.size(), std::size_t{1});
+        QVERIFY(cache.find(key(200, 1000)) != nullptr);
+        cache.clear();
+        QCOMPARE(cache.bytes(), std::size_t{0});
     }
 
     void tileCacheLru() {
@@ -227,8 +268,8 @@ private slots:
         k1.row = k2.row = k3.row = nullptr;
         cache.put(k1, img);
         cache.put(k2, img);
-        QVERIFY(cache.find(k1) != nullptr);  // k1 becomes most recent
-        cache.put(k3, img);                  // evicts k2
+        QVERIFY(cache.find(k1) != nullptr); // k1 becomes most recent
+        cache.put(k3, img);                 // evicts k2
         QCOMPARE(cache.size(), std::size_t{2});
         QVERIFY(cache.find(k2) == nullptr);
         QVERIFY(cache.find(k1) != nullptr);
@@ -237,7 +278,7 @@ private slots:
         QCOMPARE(cache.misses(), std::size_t{1});
 
         TileKey other = k1;
-        other.revision = 2;  // a changed row never matches old tiles
+        other.revision = 2; // a changed row never matches old tiles
         QVERIFY(cache.find(other) == nullptr);
         cache.clear();
         QCOMPARE(cache.size(), std::size_t{0});

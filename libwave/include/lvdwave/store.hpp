@@ -14,7 +14,7 @@
 
 namespace lvd::wave {
 
-using Time = std::uint64_t;  ///< Simulation time in timescale units (femtoseconds for NVC dumps).
+using Time = std::uint64_t; ///< Simulation time in timescale units (femtoseconds for NVC dumps).
 using SignalId = std::uint32_t;
 using ScopeId = std::uint32_t;
 
@@ -24,16 +24,21 @@ inline constexpr ScopeId kNoScope = 0xFFFFFFFFu;
 inline constexpr std::size_t kNoIndex = static_cast<std::size_t>(-1);
 
 enum class SignalKind : std::uint8_t {
-    Logic,   ///< bit or bit vector of nine-valued logic; integers and enums-as-bits also land here
-    Real,    ///< IEEE double
-    String,  ///< variable length text (VHDL enumerations, physical types, strings)
+    Logic,  ///< bit or bit vector of nine-valued logic; integers and enums-as-bits also land here
+    Real,   ///< IEEE double
+    String, ///< variable length text (VHDL enumerations, physical types, strings)
 };
+
+/// How a signal reaches its scope, as the producer reports it: the mode of a port, or Internal for a signal
+/// declared in the scope. Unknown when the source does not say (older streams, FST "implicit").
+enum class PortDirection : std::uint8_t { Unknown, Internal, In, Out, InOut, Buffer, Linkage };
 
 /// All value changes of one signal, in non-decreasing time order.
 /// Several changes may share a time (delta cycles); the last one at a time wins for lookups.
 class Signal {
 public:
-    Signal(std::string name, ScopeId scope, SignalKind kind, std::uint32_t width, SignalId aliasOf = kNoSignal);
+    Signal(std::string name, ScopeId scope, SignalKind kind, std::uint32_t width,
+           SignalId aliasOf = kNoSignal);
 
     const std::string& name() const noexcept { return name_; }
     ScopeId scope() const noexcept { return scope_; }
@@ -42,6 +47,10 @@ public:
     std::uint32_t width() const noexcept { return width_; }
     /// Target signal when this entry is an alias, else kNoSignal.
     SignalId aliasOf() const noexcept { return aliasOf_; }
+    /// Port direction of this entry (an alias has its own: a port of an instance shares the data of the
+    /// signal it is connected to).
+    PortDirection direction() const noexcept { return direction_; }
+    void setDirection(PortDirection d) noexcept { direction_ = d; }
 
     std::size_t changeCount() const noexcept { return times_.size(); }
     Time time(std::size_t change) const noexcept { return times_[change]; }
@@ -59,12 +68,21 @@ public:
     std::string bits(std::size_t change) const;
     double real(std::size_t change) const noexcept { return reals_[change]; }
     std::string_view text(std::size_t change) const noexcept { return table_[textIds_[change]]; }
+    /// True if two changes hold the same value (producers may repeat an unchanged value). O(width / 2) for
+    /// Logic, O(1) otherwise.
+    bool sameValue(std::size_t a, std::size_t b) const noexcept;
 
     /// Appending. Times must not decrease. Values shorter than the width are left-extended
     /// (with 0, or with X/Z/U when the leading character is one of those), longer ones are truncated.
     void appendLogic(Time t, std::string_view msbFirst);
     void appendReal(Time t, double v);
     void appendText(Time t, std::string_view s);
+
+    /// Removes every change; name, kind, width and direction stay. generation() goes up, which tells incremental
+    /// readers of the changes (indexes, expressions, comparisons) to start again.
+    void clearChanges();
+    /// Number of clearChanges() calls so far.
+    std::uint32_t generation() const noexcept { return generation_; }
 
     /// Indices of the changes at which one bit of a Logic signal differs from the previous change
     /// (the first change is always included). O(n). Empty for non-Logic signals or bit >= width.
@@ -82,10 +100,12 @@ private:
     SignalKind kind_;
     std::uint32_t width_;
     SignalId aliasOf_;
+    PortDirection direction_ = PortDirection::Unknown;
+    std::uint32_t generation_ = 0;
 
     std::vector<Time> times_;
-    std::vector<std::uint8_t> scalar_;  // width == 1: one Logic code per change
-    std::vector<std::uint8_t> packed_;  // width > 1: two Logic nibbles per byte, fixed stride
+    std::vector<std::uint8_t> scalar_; // width == 1: one Logic code per change
+    std::vector<std::uint8_t> packed_; // width > 1: two Logic nibbles per byte, fixed stride
     std::vector<double> reals_;
     std::vector<std::uint32_t> textIds_;
     std::vector<std::string> table_;
@@ -95,7 +115,7 @@ private:
 struct Scope {
     std::string name;
     ScopeId parent = kRootScope;
-    int type = 0;  ///< Producer specific scope type code (FST scope type for FST files).
+    int type = 0; ///< Producer specific scope type code (FST scope type for FST files).
     std::vector<ScopeId> children;
     std::vector<SignalId> signalIds;
 };
@@ -108,6 +128,8 @@ public:
     ScopeId addScope(ScopeId parent, std::string name, int type = 0);
     SignalId addSignal(ScopeId scope, std::string name, SignalKind kind, std::uint32_t width);
     SignalId addAlias(ScopeId scope, std::string name, SignalId target);
+    /// Sets the direction of one entry (not of the alias target).
+    void setDirection(SignalId id, PortDirection d) { signals_[id].setDirection(d); }
 
     std::size_t scopeCount() const noexcept { return scopes_.size(); }
     std::size_t signalCount() const noexcept { return signals_.size(); }
@@ -131,6 +153,9 @@ public:
     Time startTime() const noexcept { return start_; }
     Time endTime() const noexcept { return end_; }
     void extendTimeRange(Time t) noexcept;
+    /// Removes every value change and the time range, as when a live simulation restarts at time zero. Scopes and
+    /// signals stay, so their ids and references remain valid.
+    void clearValues();
 
     int timescaleExponent() const noexcept { return timescaleExp_; }
     void setTimescaleExponent(int e) noexcept { timescaleExp_ = e; }
@@ -140,7 +165,7 @@ public:
 
 private:
     std::vector<Scope> scopes_;
-    std::deque<Signal> signals_;  // deque: references stay valid while a live source appends signals
+    std::deque<Signal> signals_; // deque: references stay valid while a live source appends signals
     Time start_ = 0;
     Time end_ = 0;
     bool haveTime_ = false;
@@ -151,4 +176,4 @@ private:
     mutable bool scopeIndexValid_ = false;
 };
 
-}  // namespace lvd::wave
+} // namespace lvd::wave

@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include <lvdwave/compare.hpp>
 #include <lvdwave/wave_commands.hpp>
 
 #include <algorithm>
 #include <cctype>
-#include <cstdlib>
-#include <sstream>
 #include <cstdio>
+#include <cstdlib>
 #include <set>
+#include <sstream>
 
 namespace lvd::wave {
 
@@ -218,7 +219,8 @@ Result<AddWaveRequest> parseAddWave(const std::vector<std::string>& words) {
                     return R::failure("add wave: -format needs a value");
                 if (lower(v).rfind("analog", 0) == 0) {
                     req.analog = true;
-                    if (lower(v).find("interpolated") != std::string::npos || lower(v).find("linear") != std::string::npos)
+                    if (lower(v).find("interpolated") != std::string::npos ||
+                        lower(v).find("linear") != std::string::npos)
                         req.linear = true;
                 }
             } else if (w == "-min" || w == "-max") {
@@ -230,11 +232,22 @@ Result<AddWaveRequest> parseAddWave(const std::vector<std::string>& words) {
                     return R::failure("add wave: -height needs a value");
                 req.heightRows =
                     std::max(1, static_cast<int>((std::atoi(v.c_str()) + 21) / 22)); // pixels to rows
+                req.heightPx = clampRowHeight(std::max(1, std::atoi(v.c_str())));
             } else if (w == "-vbus") {
                 std::string label;
                 if (!value("-vbus", label))
                     return R::failure("add wave: -vbus needs a label");
                 req.vbus = label;
+            } else if (w == "-expr" || w == "-expression") {
+                std::string text;
+                if (!value("-expr", text))
+                    return R::failure("add wave: -expr needs an expression");
+                req.expr = text;
+            } else if (w == "-compare") {
+                req.compare = true;
+            } else if (w == "-tolerance") {
+                if (!value("-tolerance", req.tolerance))
+                    return R::failure("add wave: -tolerance needs a time");
             } else if (w == "-collapse") {
                 req.collapse = true;
             } else if (w == "-bits") {
@@ -250,7 +263,9 @@ Result<AddWaveRequest> parseAddWave(const std::vector<std::string>& words) {
         }
         req.patterns.push_back(w);
     }
-    if (req.patterns.empty() && !req.divider && req.group.empty())
+    if (req.compare && req.patterns.size() != 2)
+        return R::failure("add wave: -compare needs a reference and a test signal");
+    if (req.patterns.empty() && !req.divider && req.group.empty() && !req.expr)
         return R::failure("add wave: no signals given");
     return req;
 }
@@ -310,15 +325,109 @@ DisplayItem* targetFor(DisplayModel& model, const AddWaveRequest& req) {
     return cur;
 }
 
-}  // namespace
+} // namespace
+
+namespace {
+
+/// The row height `-height` asks for; the default height is stored as "default" (0), so scripts round-trip.
+int plainHeight(const AddWaveRequest& req) {
+    return req.heightPx == kDefaultRowHeightPx ? 0 : req.heightPx;
+}
+
+/// An analog row whose `-height` is a whole number of lines keeps it as lines (analog.heightRows, the default
+/// representation), any other height as pixels.
+void analogHeight(DisplayItem& it, const AddWaveRequest& req) {
+    if (req.heightRows > 0)
+        it.analog.heightRows = req.heightRows;
+    it.heightPx = req.heightPx % kDefaultRowHeightPx == 0 ? 0 : req.heightPx;
+}
+
+/// `-format analog*`, `-min`, `-max`, `-height` on a signal or virtual bus row.
+void applyAnalogOptions(DisplayItem& it, const AddWaveRequest& req) {
+    it.analog.enabled = true;
+    if (req.min || req.max) {
+        // A manual range needs both limits and Min < Max; anything else keeps the automatic range.
+        const double lo = req.min.value_or(0.0), hi = req.max.value_or(1.0);
+        if (analogRangeError(lo, hi).empty()) {
+            it.analog.autoRange = false;
+            it.analog.min = lo;
+            it.analog.max = hi;
+        }
+    }
+    analogHeight(it, req);
+    if (req.linear)
+        it.analog.interpolation = Interpolation::Linear;
+}
+
+} // namespace
 
 std::size_t applyAddWave(DisplayModel& model, const WaveStore& store, const AddWaveRequest& req) {
+    WaveSpace space;
+    space.setCurrent(
+        std::shared_ptr<const WaveStore>(std::shared_ptr<const WaveStore>(), &store)); // not owned
+    return applyAddWave(model, space, req);
+}
+
+std::size_t applyAddWave(DisplayModel& model, const WaveSpace& space, const AddWaveRequest& req,
+                         std::string* error) {
+    auto failWith = [&](const std::string& why) -> std::size_t {
+        if (error != nullptr)
+            *error = why;
+        return 0;
+    };
+    if (req.expr) {
+        DisplayItem it = DisplayModel::makeExpression(req.label.empty() ? *req.expr : req.label, *req.expr,
+                                                      req.radix.value_or(Radix::Default));
+        if (req.color)
+            it.color = req.color;
+        it.heightPx = plainHeight(req);
+        if (req.analog) {
+            it.analog.enabled = true;
+            analogHeight(it, req);
+            if (req.linear)
+                it.analog.interpolation = Interpolation::Linear;
+        }
+        targetFor(model, req)->children.push_back(std::move(it));
+        return 1;
+    }
+    if (req.compare) {
+        if (req.patterns.size() != 2)
+            return failWith("-compare needs a reference and a test signal");
+        const std::vector<std::string> refs = space.expandPattern(req.patterns[0], req.recursive);
+        const std::vector<std::string> tests = space.expandPattern(req.patterns[1], req.recursive);
+        if (refs.empty() || tests.empty())
+            return failWith("no signal matches " + (refs.empty() ? req.patterns[0] : req.patterns[1]));
+        if (refs.size() != tests.size())
+            return failWith("the reference matches " + std::to_string(refs.size()) + " signals, the test " +
+                            std::to_string(tests.size()));
+        Time tol = 0;
+        if (!req.tolerance.empty()) {
+            const WaveStore* st = space.storeOf(tests.front());
+            const auto t = parseDuration(req.tolerance, st != nullptr ? st->timescaleExponent() : -15);
+            if (!t)
+                return failWith("bad tolerance '" + req.tolerance + "'");
+            tol = *t;
+        }
+        DisplayItem* target = targetFor(model, req);
+        for (std::size_t i = 0; i < refs.size(); ++i) {
+            std::string label =
+                refs.size() == 1 && !req.label.empty() ? req.label : "diff " + commandPath(tests[i]);
+            DisplayItem it = DisplayModel::makeCompare(std::move(label), refs[i], tests[i], tol);
+            if (req.color)
+                it.color = req.color;
+            it.heightPx = plainHeight(req);
+            target->children.push_back(std::move(it));
+        }
+        return refs.size();
+    }
     if (!req.divider && !req.vbus && req.patterns.empty() && !req.group.empty()) {
-        targetFor(model, req);  // `add wave -group NAME`: just the (possibly empty) group
+        targetFor(model, req); // `add wave -group NAME`: just the (possibly empty) group
         return 1;
     }
     if (req.divider) {
-        targetFor(model, req)->children.push_back(DisplayModel::makeDivider(*req.divider));
+        DisplayItem div = DisplayModel::makeDivider(*req.divider);
+        div.heightPx = plainHeight(req);
+        targetFor(model, req)->children.push_back(std::move(div));
         return 1;
     }
 
@@ -334,21 +443,25 @@ std::size_t applyAddWave(DisplayModel& model, const WaveStore& store, const AddW
                 base = pattern.substr(0, at);
                 bit = std::atoi(pattern.c_str() + at + 1);
             }
-            for (std::string& p : expandWavePattern(store, base, req.recursive))
+            for (std::string& p : space.expandPattern(base, req.recursive))
                 members.push_back(BusMember{std::move(p), bit});
         }
         if (members.empty())
             return 0;
-        DisplayItem bus = DisplayModel::makeBus(*req.vbus, std::move(members), req.radix.value_or(Radix::Hex));
+        DisplayItem bus =
+            DisplayModel::makeBus(*req.vbus, std::move(members), req.radix.value_or(Radix::Hex));
         if (req.color)
             bus.color = req.color;
+        bus.heightPx = plainHeight(req);
+        if (req.analog)
+            applyAnalogOptions(bus, req);
         targetFor(model, req)->children.push_back(std::move(bus));
         return 1;
     }
 
     std::vector<std::string> paths;
     for (const std::string& pattern : req.patterns)
-        for (std::string& p : expandWavePattern(store, pattern, req.recursive))
+        for (std::string& p : space.expandPattern(pattern, req.recursive))
             paths.push_back(std::move(p));
     if (paths.empty())
         return 0;
@@ -359,22 +472,9 @@ std::size_t applyAddWave(DisplayModel& model, const WaveStore& store, const AddW
         if (req.color)
             it.color = req.color;
         it.showBits = req.showBits;
-        if (req.analog) {
-            it.analog.enabled = true;
-            if (req.min || req.max) {
-                // A manual range needs both limits and Min < Max; anything else keeps the automatic range.
-                const double lo = req.min.value_or(0.0), hi = req.max.value_or(1.0);
-                if (analogRangeError(lo, hi).empty()) {
-                    it.analog.autoRange = false;
-                    it.analog.min = lo;
-                    it.analog.max = hi;
-                }
-            }
-            if (req.heightRows > 0)
-                it.analog.heightRows = req.heightRows;
-            if (req.linear)
-                it.analog.interpolation = Interpolation::Linear;
-        }
+        it.heightPx = plainHeight(req);
+        if (req.analog)
+            applyAnalogOptions(it, req);
         items.push_back(std::move(it));
     }
     if (items.size() == 1 && !req.label.empty())
@@ -402,10 +502,7 @@ std::string tclWord(const std::string& s) {
 }
 
 std::string classicPath(const std::string& dotted) {
-    std::string p = "/";
-    for (char c : dotted)
-        p += c == '.' ? '/' : c;
-    return p;
+    return commandPath(dotted);
 }
 
 std::string colorOption(const DisplayItem& it) {
@@ -414,6 +511,29 @@ std::string colorOption(const DisplayItem& it) {
     char buf[32];
     std::snprintf(buf, sizeof buf, " -color #%06x", *it.color & 0xFFFFFFu);
     return buf;
+}
+
+// " -format analog-... [-min A -max B] -height H" for an analog signal or virtual bus row, else "".
+std::string analogOptions(const DisplayItem& it) {
+    if (!it.analog.enabled)
+        return {};
+    std::string o = " -format ";
+    o += it.analog.interpolation == Interpolation::Linear ? "analog-interpolated" : "analog-step";
+    if (!it.analog.autoRange) {
+        char buf[96];
+        std::snprintf(buf, sizeof buf, " -min %.17g -max %.17g", it.analog.min, it.analog.max);
+        o += buf;
+    }
+    o += " -height " + std::to_string(it.heightPx > 0 ? it.heightPx : it.analog.heightRows * 22);
+    return o;
+}
+
+// " -height N" for a row with its own height that analogOptions() does not cover, else "".
+std::string heightOption(const DisplayItem& it) {
+    if (it.heightPx <= 0 ||
+        (it.analog.enabled && it.kind != ItemKind::Compare && it.kind != ItemKind::Divider))
+        return {};
+    return " -height " + std::to_string(it.heightPx);
 }
 
 struct Exporter {
@@ -436,68 +556,91 @@ struct Exporter {
     void item(const DisplayItem& it, const std::string& group, bool* pendingCollapse) {
         const std::string g = groupOptions(group, pendingCollapse);
         switch (it.kind) {
-            case ItemKind::Group: {
-                const std::string name = group.empty() ? it.label : group + "/" + it.label;
-                // A group announces itself with its first row. One that is empty, or starts with another
-                // group, gets a line of its own: `add wave -group NAME [-collapse]`.
-                bool pending = !it.expanded;
-                if (it.children.empty() || it.children.front().kind == ItemKind::Group) {
-                    os << "add wave" << groupOptions(name, &pending) << "\n";
-                    pending = false;
-                }
-                for (const DisplayItem& c : it.children)
-                    item(c, name, &pending);
-                return;
+        case ItemKind::Group: {
+            const std::string name = group.empty() ? it.label : group + "/" + it.label;
+            // A group announces itself with its first row. One that is empty, or starts with another
+            // group, gets a line of its own: `add wave -group NAME [-collapse]`.
+            bool pending = !it.expanded;
+            if (it.children.empty() || it.children.front().kind == ItemKind::Group) {
+                os << "add wave" << groupOptions(name, &pending) << "\n";
+                pending = false;
             }
-            case ItemKind::Divider:
-                os << "add wave" << g << " -divider " << tclWord(it.label) << "\n";
-                return;
-            case ItemKind::VirtualBus:
-                os << "add wave -vbus " << tclWord(it.label) << g;
-                if (it.radix != Radix::Hex)  // hex is what a bus gets when no radix is given
-                    os << " -radix " << radixName(it.radix);
-                os << colorOption(it);
-                for (const BusMember& m : it.members)
-                    os << ' ' << tclWord(classicPath(m.path) + (m.bit >= 0 ? "@" + std::to_string(m.bit) : ""));
-                os << "\n";
-                return;
-            case ItemKind::Signal:
-                os << "add wave" << g;
-                if (it.radix != Radix::Default)
-                    os << " -radix " << radixName(it.radix);
-                os << colorOption(it);
-                if (!it.label.empty())
-                    os << " -label " << tclWord(it.label);
-                if (it.showBits)
-                    os << " -bits";
-                if (it.analog.enabled) {
-                    os << " -format " << (it.analog.interpolation == Interpolation::Linear ? "analog-interpolated" : "analog-step");
-                    if (!it.analog.autoRange) {
-                        char buf[96];
-                        std::snprintf(buf, sizeof buf, " -min %.17g -max %.17g", it.analog.min, it.analog.max);
-                        os << buf;
-                    }
-                    os << " -height " << it.analog.heightRows * 22;
-                }
-                os << ' ' << tclWord(classicPath(it.path)) << "\n";
-                return;
+            for (const DisplayItem& c : it.children)
+                item(c, name, &pending);
+            return;
+        }
+        case ItemKind::Divider:
+            os << "add wave" << g << heightOption(it) << " -divider " << tclWord(it.label) << "\n";
+            return;
+        case ItemKind::VirtualBus:
+            os << "add wave -vbus " << tclWord(it.label) << g;
+            if (it.radix != Radix::Hex) // hex is what a bus gets when no radix is given
+                os << " -radix " << radixName(it.radix);
+            os << colorOption(it) << analogOptions(it) << heightOption(it);
+            for (const BusMember& m : it.members)
+                os << ' ' << tclWord(classicPath(m.path) + (m.bit >= 0 ? "@" + std::to_string(m.bit) : ""));
+            os << "\n";
+            return;
+        case ItemKind::Expression:
+            os << "add wave" << g;
+            if (it.radix != Radix::Default)
+                os << " -radix " << radixName(it.radix);
+            os << colorOption(it);
+            if (it.analog.enabled)
+                os << " -format "
+                   << (it.analog.interpolation == Interpolation::Linear ? "analog-interpolated"
+                                                                        : "analog-step")
+                   << " -height " << (it.heightPx > 0 ? it.heightPx : it.analog.heightRows * 22);
+            os << heightOption(it);
+            os << " -label " << tclWord(it.displayName()) << " -expr " << tclWord(it.expr) << "\n";
+            return;
+        case ItemKind::Compare:
+            os << "add wave" << g << " -compare" << colorOption(it) << heightOption(it) << " -label "
+               << tclWord(it.label);
+            if (it.tolerance != 0)
+                os << " -tolerance " << it.tolerance;
+            for (const BusMember& m : it.members)
+                os << ' ' << tclWord(classicPath(m.path));
+            os << "\n";
+            return;
+        case ItemKind::Signal:
+            os << "add wave" << g;
+            if (it.radix != Radix::Default)
+                os << " -radix " << radixName(it.radix);
+            os << colorOption(it);
+            if (!it.label.empty())
+                os << " -label " << tclWord(it.label);
+            if (it.showBits)
+                os << " -bits";
+            os << analogOptions(it) << heightOption(it);
+            os << ' ' << tclWord(classicPath(it.path)) << "\n";
+            return;
         }
     }
 };
 
-}  // namespace
+} // namespace
 
 std::string exportDoScript(const DisplayModel& model) {
     Exporter e;
-    e.os << "# lvdsim wave layout: familiar add wave commands (virtual bus, group collapse, show-bits, nested group paths and empty groups are lvdsim extensions)\n";
+    e.os << "# lvdsim wave layout: familiar add wave commands (virtual bus, group collapse, show-bits, "
+            "nested group paths and empty groups are lvdsim extensions)\n";
     for (const DisplayItem& it : model.root().children)
         e.item(it, {}, nullptr);
     return e.os.str();
 }
 
 ImportResult importDoScript(std::string_view script, DisplayModel& model, const WaveStore& store) {
+    WaveSpace space;
+    space.setCurrent(
+        std::shared_ptr<const WaveStore>(std::shared_ptr<const WaveStore>(), &store)); // not owned
+    return importDoScript(script, model, space);
+}
+
+ImportResult importDoScript(std::string_view script, DisplayModel& model, const WaveSpace& space) {
     ImportResult res;
-    // Logical lines (a trailing backslash continues the line) with the number of the physical line they start on.
+    // Logical lines (a trailing backslash continues the line) with the number of the physical line they start
+    // on.
     std::vector<std::pair<int, std::string>> lines;
     {
         std::string cur;
@@ -506,7 +649,8 @@ ImportResult importDoScript(std::string_view script, DisplayModel& model, const 
         while (pos <= script.size()) {
             ++physical;
             const std::size_t nl = script.find('\n', pos);
-            std::string line(script.substr(pos, nl == std::string_view::npos ? std::string_view::npos : nl - pos));
+            std::string line(
+                script.substr(pos, nl == std::string_view::npos ? std::string_view::npos : nl - pos));
             if (!line.empty() && line.back() == '\r')
                 line.pop_back();
             if (cur.empty())
@@ -539,12 +683,25 @@ ImportResult importDoScript(std::string_view script, DisplayModel& model, const 
             res.errors.push_back("line " + std::to_string(lineNo) + ": " + req.error());
             continue;
         }
-        const std::size_t n = applyAddWave(model, store, req.value());
+        std::string why;
+        const std::size_t n = applyAddWave(model, space, req.value(), &why);
         if (n == 0)
-            res.errors.push_back("line " + std::to_string(lineNo) + ": no signal matches");
+            res.errors.push_back("line " + std::to_string(lineNo) + ": " +
+                                 (why.empty() ? "no signal matches" : why));
         res.rowsAdded += n;
     }
     return res;
+}
+
+std::string commandPath(std::string_view prefixedDotted) {
+    const WaveSpace::Split sp = WaveSpace::split(prefixedDotted);
+    std::string p(sp.dataset);
+    if (!p.empty())
+        p += ':';
+    p += '/';
+    for (char c : sp.path)
+        p += c == '.' ? '/' : c;
+    return p;
 }
 
 } // namespace lvd::wave

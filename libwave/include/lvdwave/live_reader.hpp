@@ -16,9 +16,13 @@ struct PollResult {
     std::size_t newSignals = 0;          ///< signals (and aliases) defined by this poll
     bool definitionsCompleted = false;   ///< the end-of-definitions marker was read by this poll
     bool timeAdvanced = false;           ///< simulation time moved forward
+    /// The simulator restarted at time zero (an R record): every value change of the store was removed before the
+    /// values of the new run were added. Signals and scopes stay. Views must drop what they derived from the old
+    /// values; incremental indexes notice it through Signal::generation().
+    bool restarted = false;
     std::size_t badLines = 0;            ///< records that could not be understood and were skipped
 
-    bool changed() const noexcept { return valueChanges != 0 || newSignals != 0 || timeAdvanced; }
+    bool changed() const noexcept { return valueChanges != 0 || newSignals != 0 || timeAdvanced || restarted; }
 };
 
 /// Reads the append-only waveform stream that the NVC fork writes with `--format=live` while the
@@ -27,6 +31,8 @@ struct PollResult {
 ///
 /// A trailing line that the writer has not finished yet is kept and completed by the next poll.
 /// Signals are never added after definitionsComplete(), so references into the store stay valid.
+/// A restart of the simulation (`restart` in the shell) clears the values and keeps the signals: see
+/// PollResult::restarted.
 /// The reader is not thread safe: poll() and any use of the store must be on the same thread.
 class LiveReader {
 public:
@@ -42,6 +48,8 @@ public:
     Time currentTime() const noexcept { return time_; }
     /// Bytes consumed so far.
     std::uint64_t bytesRead() const noexcept { return offset_; }
+    /// Number of restart records read so far.
+    unsigned restartCount() const noexcept { return restarts_; }
 
 private:
     bool apply(const std::string& line, WaveStore& store, PollResult& out);
@@ -53,7 +61,10 @@ private:
     bool defsDone_ = false;
     Time time_ = 0;
     ScopeId scope_ = kRootScope;
+    SignalId lastEntry_ = kNoSignal;  ///< entry of the last V record, which a following D record describes
     std::vector<SignalId> byHandle_;  ///< stream handle (1-based) to signal; index 0 unused
+    std::uint64_t handleBase_ = 0;    ///< added to the handles of value records since the last R record
+    unsigned restarts_ = 0;
 };
 
 }  // namespace lvd::wave

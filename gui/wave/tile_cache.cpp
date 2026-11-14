@@ -38,13 +38,18 @@ const QImage* TileCache::find(const TileKey& key) {
 void TileCache::put(const TileKey& key, QImage image) {
     auto it = map_.find(key);
     if (it != map_.end()) {
+        bytes_ -= static_cast<std::size_t>(it->second->image.sizeInBytes());
+        bytes_ += static_cast<std::size_t>(image.sizeInBytes());
         it->second->image = std::move(image);
         order_.splice(order_.begin(), order_, it->second);
-        return;
+    } else {
+        bytes_ += static_cast<std::size_t>(image.sizeInBytes());
+        order_.push_front({key, std::move(image)});
+        map_[key] = order_.begin();
     }
-    order_.push_front({key, std::move(image)});
-    map_[key] = order_.begin();
-    while (map_.size() > capacity_) {
+    // Evict the least recently used entries, but never the one just put.
+    while (map_.size() > 1 && (map_.size() > capacity_ || (maxBytes_ != 0 && bytes_ > maxBytes_))) {
+        bytes_ -= static_cast<std::size_t>(order_.back().image.sizeInBytes());
         map_.erase(order_.back().key);
         order_.pop_back();
     }
@@ -53,6 +58,7 @@ void TileCache::put(const TileKey& key, QImage image) {
 void TileCache::clear() {
     map_.clear();
     order_.clear();
+    bytes_ = 0;
 }
 
 } // namespace lvd::gui

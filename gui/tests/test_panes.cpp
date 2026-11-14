@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "app/console_input.hpp"
 #include "app/library_pane.hpp"
 #include "app/objects_pane.hpp"
 #include "app/structure_pane.hpp"
@@ -31,11 +32,12 @@ WaveStore makeStore() {
 
 QTreeWidgetItem* find(QTreeWidgetItem* parent, const QString& name) {
     for (int i = 0; i < parent->childCount(); ++i)
-        if (parent->child(i)->text(0) == name) return parent->child(i);
+        if (parent->child(i)->text(0) == name)
+            return parent->child(i);
     return nullptr;
 }
 
-}  // namespace
+} // namespace
 
 class TestPanes : public QObject {
     Q_OBJECT
@@ -72,10 +74,10 @@ private slots:
         QCOMPARE(pane.selectedSignalPaths(), (QStringList{"tb.clk"}));
 
         pane.tree()->clearSelection();
-        find(tb, "dut")->setSelected(true);  // a scope stands for everything in it
+        find(tb, "dut")->setSelected(true); // a scope stands for everything in it
         QCOMPARE(pane.selectedSignalPaths(), (QStringList{"tb.dut.count", "tb.dut.volt", "tb.dut.state"}));
 
-        find(find(tb, "dut"), "count")->setSelected(true);  // already included: not listed twice
+        find(find(tb, "dut"), "count")->setSelected(true); // already included: not listed twice
         QCOMPARE(pane.selectedSignalPaths().size(), 3);
 
         pane.tree()->clearSelection();
@@ -83,7 +85,7 @@ private slots:
         QCOMPARE(pane.selectedSignalPaths().size(), 5);
     }
 
-    void activatingAddsToWave() {
+    void returnAddsToWave() {
         const WaveStore st = makeStore();
         ObjectsPane pane;
         pane.setStore(&st);
@@ -91,12 +93,12 @@ private slots:
 
         QTreeWidgetItem* clk = find(pane.tree()->topLevelItem(0), "clk");
         pane.tree()->setCurrentItem(clk);
-        emit pane.tree()->itemActivated(clk, 0);
+        QTest::keyClick(pane.tree(), Qt::Key_Return);
         QCOMPARE(spy.count(), 1);
         QCOMPARE(spy.at(0).at(0).toStringList(), (QStringList{"tb.clk"}));
 
         pane.tree()->clearSelection();
-        emit pane.tree()->itemActivated(clk, 0);  // nothing selected: nothing added
+        QTest::keyClick(pane.tree(), Qt::Key_Enter); // nothing selected: nothing added
         QCOMPARE(spy.count(), 1);
     }
 
@@ -107,9 +109,9 @@ private slots:
         QCOMPARE(pane.visibleSignalCount(), 5);
 
         pane.setFilter("c*");
-        QCOMPARE(pane.visibleSignalCount(), 2);  // clk, count
+        QCOMPARE(pane.visibleSignalCount(), 2); // clk, count
         pane.setFilter("COUNT");
-        QCOMPARE(pane.visibleSignalCount(), 1);  // case-insensitive
+        QCOMPARE(pane.visibleSignalCount(), 1); // case-insensitive
         QTreeWidgetItem* tb = pane.tree()->topLevelItem(0);
         QVERIFY(!tb->isHidden());
         QVERIFY(find(tb, "data")->isHidden());
@@ -120,7 +122,7 @@ private slots:
 
         pane.setFilter("nomatch");
         QCOMPARE(pane.visibleSignalCount(), 0);
-        QVERIFY(tb->isHidden());  // scopes without a match disappear too
+        QVERIFY(tb->isHidden()); // scopes without a match disappear too
 
         pane.setFilter({});
         QCOMPARE(pane.visibleSignalCount(), 5);
@@ -131,25 +133,25 @@ private slots:
         const WaveStore st = makeStore();
         ObjectsPane pane;
         pane.setStore(&st);
-        QCOMPARE(pane.tree()->topLevelItemCount(), 1);  // the whole hierarchy: tb
+        QCOMPARE(pane.tree()->topLevelItemCount(), 1); // the whole hierarchy: tb
 
         pane.setScope("tb.dut");
         QCOMPARE(pane.scope(), QString("tb.dut"));
-        QCOMPARE(pane.tree()->topLevelItemCount(), 3);  // count, volt, state directly at the top
+        QCOMPARE(pane.tree()->topLevelItemCount(), 3); // count, volt, state directly at the top
         QCOMPARE(pane.signalCount(), 3);
         QCOMPARE(pane.tree()->topLevelItem(0)->text(0), QString("count"));
         QCOMPARE(pane.selectedSignalPaths().size(), 0);
         pane.tree()->topLevelItem(0)->setSelected(true);
-        QCOMPARE(pane.selectedSignalPaths(), (QStringList{"tb.dut.count"}));  // full store path
+        QCOMPARE(pane.selectedSignalPaths(), (QStringList{"tb.dut.count"})); // full store path
 
-        pane.setScope("tb");  // own signals first-class, the sub-scope below
+        pane.setScope("tb"); // own signals first-class, the sub-scope below
         QCOMPARE(pane.signalCount(), 5);
         QCOMPARE(pane.scopeCount(), 1);
 
-        pane.setScope("nonexistent");  // unknown: everything
+        pane.setScope("nonexistent"); // unknown: everything
         QCOMPARE(pane.tree()->topLevelItemCount(), 1);
         pane.setScope("tb.dut");
-        pane.setScope({});  // empty: everything
+        pane.setScope({}); // empty: everything
         QCOMPARE(pane.tree()->topLevelItemCount(), 1);
         QCOMPARE(pane.signalCount(), 5);
     }
@@ -161,8 +163,8 @@ private slots:
         pane.setScope("tb.dut");
         pane.setFilter("c*");
         QCOMPARE(pane.visibleSignalCount(), 1);
-        pane.setScope("tb");  // the filter is kept
-        QCOMPARE(pane.visibleSignalCount(), 2);  // clk, count
+        pane.setScope("tb");                    // the filter is kept
+        QCOMPARE(pane.visibleSignalCount(), 2); // clk, count
     }
 
     void structureShowsScopesOnly() {
@@ -174,11 +176,11 @@ private slots:
         QCOMPARE(pane.tree()->topLevelItemCount(), 1);
         QTreeWidgetItem* root = pane.tree()->topLevelItem(0);
         QCOMPARE(root->text(0), QString("design"));
-        QCOMPARE(root->childCount(), 1);  // tb
-        QCOMPARE(root->child(0)->childCount(), 1);  // dut
-        QCOMPARE(root->child(0)->child(0)->childCount(), 0);  // no signals in this tree
+        QCOMPARE(root->childCount(), 1);                     // tb
+        QCOMPARE(root->child(0)->childCount(), 1);           // dut
+        QCOMPARE(root->child(0)->child(0)->childCount(), 0); // no signals in this tree
 
-        QVERIFY(spy.count() >= 1);  // the design row is selected when the store is set
+        QVERIFY(spy.count() >= 1); // the design row is selected when the store is set
         QCOMPARE(spy.last().at(0).toString(), QString());
 
         pane.tree()->setCurrentItem(root->child(0)->child(0));
@@ -229,7 +231,7 @@ private slots:
         QCOMPARE(w->toolTip(0), QString("work"));
         QCOMPARE(w->childCount(), 2);
         QCOMPARE(w->child(1)->text(1), QString("elaborated"));
-        QCOMPARE(w->child(1)->childCount(), 2);  // two architectures
+        QCOMPARE(w->child(1)->childCount(), 2); // two architectures
         QCOMPARE(pane.tree()->topLevelItem(1)->childCount(), 0);
 
         pane.setLibraries({});
@@ -287,7 +289,7 @@ private slots:
         t.append("half\n% ");
         QCOMPARE(t.text(), QString("line one\nsecond half\n% "));
         t.appendNote("** note");
-        QVERIFY(t.text().endsWith("\n** note\n"));  // a note always starts on a fresh line
+        QVERIFY(t.text().endsWith("\n** note\n")); // a note always starts on a fresh line
         t.clear();
         QVERIFY(t.text().isEmpty());
     }
@@ -295,7 +297,7 @@ private slots:
     void transcriptCommandsAndHistory() {
         TranscriptWidget t;
         QSignalSpy spy(&t, &TranscriptWidget::commandEntered);
-        auto* edit = t.findChild<QLineEdit*>();
+        auto* edit = t.input();
         QVERIFY(edit != nullptr);
 
         QTest::keyClicks(edit, "run 10 ns");
@@ -311,14 +313,14 @@ private slots:
         QCOMPARE(edit->text(), QString("examine /cnt"));
         QTest::keyClick(edit, Qt::Key_Up);
         QCOMPARE(edit->text(), QString("run 10 ns"));
-        QTest::keyClick(edit, Qt::Key_Up);  // stays at the oldest
+        QTest::keyClick(edit, Qt::Key_Up); // stays at the oldest
         QCOMPARE(edit->text(), QString("run 10 ns"));
         QTest::keyClick(edit, Qt::Key_Down);
         QCOMPARE(edit->text(), QString("examine /cnt"));
         QTest::keyClick(edit, Qt::Key_Down);
         QVERIFY(edit->text().isEmpty());
 
-        QTest::keyClicks(edit, "half typed");  // the line being typed survives a trip through the history
+        QTest::keyClicks(edit, "half typed"); // the line being typed survives a trip through the history
         QTest::keyClick(edit, Qt::Key_Up);
         QTest::keyClick(edit, Qt::Key_Down);
         QCOMPARE(edit->text(), QString("half typed"));
@@ -326,19 +328,19 @@ private slots:
 
     void historyIgnoresRepeatsAndBlankLines() {
         TranscriptWidget t;
-        auto* edit = t.findChild<QLineEdit*>();
+        auto* edit = t.input();
         QSignalSpy spy(&t, &TranscriptWidget::commandEntered);
         for (const char* c : {"run", "run", "   ", "run"}) {
             QTest::keyClicks(edit, c);
             QTest::keyClick(edit, Qt::Key_Return);
         }
         QCOMPARE(t.history(), (QStringList{"run"}));
-        QCOMPARE(spy.count(), 4);  // every Return is a command; an empty line brings the prompt back
+        QCOMPARE(spy.count(), 4); // every Return is a command; an empty line brings the prompt back
     }
 
     void inputCanBeDisabled() {
         TranscriptWidget t;
-        auto* edit = t.findChild<QLineEdit*>();
+        auto* edit = t.input();
         t.setInputEnabled(false);
         QVERIFY(!edit->isEnabled());
         t.setInputEnabled(true);

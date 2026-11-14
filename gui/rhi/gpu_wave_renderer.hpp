@@ -55,6 +55,16 @@ public:
     static constexpr int kTileWidth = 256;
     static constexpr int kAtlasWidth = 4096;
     static constexpr int kAtlasHeight = 4096;
+    /// Atlases of one row height grow: the first holds 4 lines of 16 tiles, each next one four times as many, up to
+    /// the full atlas size (kMaxAtlasesPerHeight of them). A row height used by a few rows (the user resized them)
+    /// costs a small texture, not 64 MB.
+    static constexpr int kFirstAtlasRows = 4;
+    static constexpr std::size_t kMaxAtlasesPerHeight = 6;
+    /// Lines of tiles of the atlas number `index` (0-based) of a row height.
+    static int atlasRows(int slotHeight, std::size_t index) noexcept;
+    /// Upper limit for the memory of all atlases. When a new atlas would go beyond it, the atlases of row heights
+    /// that the current frame does not draw are freed first, least recently drawn first.
+    static constexpr std::size_t kAtlasBudgetBytes = std::size_t{384} << 20;
 
     GpuWaveRenderer();
     ~GpuWaveRenderer();
@@ -83,6 +93,10 @@ public:
     const Stats& lastFrame() const noexcept { return stats_; }
     std::size_t cachedTiles() const noexcept { return slots_.size(); }
     std::size_t atlasCount() const noexcept;
+    /// GPU memory held by the atlases (RGBA8 textures).
+    std::size_t atlasBytes() const noexcept;
+    /// Number of row heights that have atlases.
+    std::size_t atlasHeights() const noexcept { return atlases_.size(); }
 
 private:
     struct Atlas;
@@ -96,6 +110,9 @@ private:
 
     Atlas* createAtlas(int slotHeight);
     Slot* acquire(const TileKey& key, int heightPx);
+    /// Frees the atlases of row heights not drawn in this frame until `needed` more bytes fit in the budget.
+    void trimAtlases(std::size_t needed);
+    void dropHeight(int heightPx);
     void ensureBuffer(QRhiBuffer*& buf, int& capacity, int bytes);
 
     QRhi* rhi_ = nullptr;
@@ -111,6 +128,8 @@ private:
     QRhiSampler* sampler_ = nullptr;
 
     std::map<int, std::vector<std::unique_ptr<Atlas>>> atlases_;  // by slot height
+    std::map<int, std::uint64_t> heightLastFrame_;                  // the last frame that drew tiles of a height
+    const Atlas* anchor_ = nullptr;  // the atlas the pipelines were created against: never freed
     std::unordered_map<TileKey, Slot, TileKeyHash> slots_;
     std::list<TileKey> lru_;  // front is the most recently used
     std::uint64_t frameNumber_ = 0;

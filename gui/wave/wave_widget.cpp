@@ -30,7 +30,9 @@
 #include <functional>
 #include <unordered_map>
 
-static void lvdInitWaveResources() { Q_INIT_RESOURCE(wave_bars); }  // global scope: the macro declares a function
+static void lvdInitWaveResources() {
+    Q_INIT_RESOURCE(wave_bars);
+} // global scope: the macro declares a function
 
 namespace lvd::gui {
 
@@ -70,26 +72,6 @@ QColor toQColor(std::uint32_t rgb) {
     return QColor((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
 }
 
-// Nearest transition of a row strictly before (dir < 0) or after (dir > 0) time t.
-std::optional<double> edgeFrom(const RowSource& src, Time t, int dir) {
-    const std::size_t n = src.count();
-    const std::size_t hold = src.holdIndex(t);
-    if (dir > 0) {
-        std::size_t j = hold == kNoIndex ? 0 : hold + 1;
-        while (j < n && src.time(j) <= t)
-            ++j;
-        if (j < n)
-            return static_cast<double>(src.time(j));
-    } else if (hold != kNoIndex) {
-        std::size_t j = hold + 1;
-        while (j > 0 && src.time(j - 1) >= t)
-            --j;
-        if (j > 0)
-            return static_cast<double>(src.time(j - 1));
-    }
-    return std::nullopt;
-}
-
 const QColor kCursorColors[] = {QColor(0xff, 0xe0, 0x40), QColor(0xff, 0x80, 0xff), QColor(0x40, 0xe0, 0xff),
                                 QColor(0xff, 0xa0, 0x40), QColor(0xa0, 0xff, 0x60), QColor(0xff, 0x70, 0x70),
                                 QColor(0xa0, 0xa0, 0xff), QColor(0xe0, 0xe0, 0xe0)};
@@ -123,26 +105,27 @@ const char* eventSeverityName(EventSeverity s) {
 }
 
 QString scrollBarStyleSheet() {
-    const QString common = QStringLiteral(
-        "QScrollBar { background: #1c1c1c; border: 0; }"
-        "QScrollBar::handle { background: #5a5a5a; border-radius: 3px; }"
-        "QScrollBar::handle:hover, QScrollBar::handle:pressed { background: #7a7a7a; }"
-        "QScrollBar::add-page, QScrollBar::sub-page { background: #1c1c1c; }"
-        "QScrollBar::add-line, QScrollBar::sub-line { background: #262626; border: 0; subcontrol-origin: margin; }");
-    const QString vertical = QStringLiteral(
-        "QScrollBar:vertical { width: 15px; margin: 15px 0 15px 0; }"
-        "QScrollBar::handle:vertical { min-height: 24px; margin: 0 2px; }"
-        "QScrollBar::add-line:vertical { height: 15px; subcontrol-position: bottom; }"
-        "QScrollBar::sub-line:vertical { height: 15px; subcontrol-position: top; }"
-        "QScrollBar::up-arrow:vertical { image: url(:/lvdsim/wave/arrow_up.png); }"
-        "QScrollBar::down-arrow:vertical { image: url(:/lvdsim/wave/arrow_down.png); }");
-    const QString horizontal = QStringLiteral(
-        "QScrollBar:horizontal { height: 15px; margin: 0 15px 0 15px; }"
-        "QScrollBar::handle:horizontal { min-width: 24px; margin: 2px 0; }"
-        "QScrollBar::add-line:horizontal { width: 15px; subcontrol-position: right; }"
-        "QScrollBar::sub-line:horizontal { width: 15px; subcontrol-position: left; }"
-        "QScrollBar::left-arrow:horizontal { image: url(:/lvdsim/wave/arrow_left.png); }"
-        "QScrollBar::right-arrow:horizontal { image: url(:/lvdsim/wave/arrow_right.png); }");
+    const QString common =
+        QStringLiteral("QScrollBar { background: #1c1c1c; border: 0; }"
+                       "QScrollBar::handle { background: #5a5a5a; border-radius: 3px; }"
+                       "QScrollBar::handle:hover, QScrollBar::handle:pressed { background: #7a7a7a; }"
+                       "QScrollBar::add-page, QScrollBar::sub-page { background: #1c1c1c; }"
+                       "QScrollBar::add-line, QScrollBar::sub-line { background: #262626; border: 0; "
+                       "subcontrol-origin: margin; }");
+    const QString vertical =
+        QStringLiteral("QScrollBar:vertical { width: 15px; margin: 15px 0 15px 0; }"
+                       "QScrollBar::handle:vertical { min-height: 24px; margin: 0 2px; }"
+                       "QScrollBar::add-line:vertical { height: 15px; subcontrol-position: bottom; }"
+                       "QScrollBar::sub-line:vertical { height: 15px; subcontrol-position: top; }"
+                       "QScrollBar::up-arrow:vertical { image: url(:/lvdsim/wave/arrow_up.png); }"
+                       "QScrollBar::down-arrow:vertical { image: url(:/lvdsim/wave/arrow_down.png); }");
+    const QString horizontal =
+        QStringLiteral("QScrollBar:horizontal { height: 15px; margin: 0 15px 0 15px; }"
+                       "QScrollBar::handle:horizontal { min-width: 24px; margin: 2px 0; }"
+                       "QScrollBar::add-line:horizontal { width: 15px; subcontrol-position: right; }"
+                       "QScrollBar::sub-line:horizontal { width: 15px; subcontrol-position: left; }"
+                       "QScrollBar::left-arrow:horizontal { image: url(:/lvdsim/wave/arrow_left.png); }"
+                       "QScrollBar::right-arrow:horizontal { image: url(:/lvdsim/wave/arrow_right.png); }");
     return common + vertical + horizontal;
 }
 
@@ -175,6 +158,7 @@ WaveWidget::WaveWidget(QWidget* parent)
     , renderer_(std::make_unique<PainterRenderer>(palette_)) {
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
+    setAcceptDrops(true);
     setMinimumSize(320, 120);
 
     vbar_ = new QScrollBar(Qt::Vertical, this);
@@ -192,7 +176,8 @@ WaveWidget::WaveWidget(QWidget* parent)
     hbar_->setPageStep(kHBarSteps);
     // The bars sit on the dark wave area. A style sheet gives every platform style the same dark track, grey
     // handle and arrow buttons (native styles would draw hairline or invisible bars on a dark background).
-    for (QScrollBar* bar : {vbar_, hbar_}) bar->setStyleSheet(scrollBarStyleSheet());
+    for (QScrollBar* bar : {vbar_, hbar_})
+        bar->setStyleSheet(scrollBarStyleSheet());
     connect(hbar_, &QScrollBar::valueChanged, this, [this](int v) { hbarMoved(v); });
     autoScroll_ = new QTimer(this);
     autoScroll_->setInterval(40);
@@ -284,10 +269,9 @@ int WaveWidget::waveWidth() const {
 void WaveWidget::setStore(std::shared_ptr<const WaveStore> store) {
     autoFit_ = true;
     store_ = std::move(store);
+    space_.setCurrent(store_);
     lastEnd_ = store_ ? static_cast<double>(store_->endTime()) : 0.0;
-    indexes_.clear();
-    busCache_.clear();
-    bitCache_.clear();
+    dropDerivedCaches();
     ++storeRevision_;
     cache_.clear();
     selected_.clear();
@@ -333,7 +317,7 @@ void WaveWidget::fitAll() {
     autoFit_ = true;
     view_.widthPx = waveWidth();
     if (store_)
-        view_.fit(static_cast<double>(store_->startTime()), static_cast<double>(store_->endTime()));
+        view_.fit(static_cast<double>(store_->startTime()), static_cast<double>(spanEnd()));
     else
         view_.fit(0.0, 1.0);
     emitViewChanged();
@@ -360,7 +344,9 @@ void WaveWidget::setFollow(bool on) {
         return;
     follow_ = on;
     if (on) {
-        if (store_) autoFit_ = false;  // the current width (the whole run, if nothing was zoomed) becomes the follow width
+        if (store_)
+            autoFit_ =
+                false; // the current width (the whole run, if nothing was zoomed) becomes the follow width
         pinToEnd();
     }
     emit followChanged(on);
@@ -368,8 +354,9 @@ void WaveWidget::setFollow(bool on) {
 
 void WaveWidget::pinToEnd() {
     view_.widthPx = waveWidth();
-    if (autoFit_) {  // Follow was set before there was data to take a width from: the view still fits the run
-        if (store_) view_.fit(static_cast<double>(store_->startTime()), static_cast<double>(store_->endTime()));
+    if (autoFit_) { // Follow was set before there was data to take a width from: the view still fits the run
+        if (store_)
+            view_.fit(static_cast<double>(store_->startTime()), static_cast<double>(store_->endTime()));
         emitViewChanged();
         return;
     }
@@ -386,7 +373,7 @@ void WaveWidget::viewPannedByUser() {
 }
 
 void WaveWidget::clampView() {
-    view_.clamp(store_ ? static_cast<double>(store_->endTime()) : 0.0);
+    view_.clamp(store_ ? static_cast<double>(spanEnd()) : 0.0);
 }
 
 void WaveWidget::emitViewChanged() {
@@ -485,23 +472,37 @@ void WaveWidget::ensureVisible(double t) {
 // ---------------------------------------------------------------------------------------------
 // Rows
 
-const NumericIndex* WaveWidget::numericIndexFor(SignalId id, bool isSigned) {
-    const SignalId real = store_->resolve(id);
-    auto key = std::make_pair(real, isSigned);
+namespace {
+/// Rows that can be drawn as an analog trace (Format > Analog): signals, expressions and virtual buses.
+bool hasAnalogView(const DisplayItem& it) {
+    return it.kind == ItemKind::Signal || it.kind == ItemKind::Expression || it.kind == ItemKind::VirtualBus;
+}
+} // namespace
+
+const NumericIndex* WaveWidget::numericIndexFor(const Signal& signal, bool isSigned) {
+    auto key = std::make_pair(&signal, isSigned);
     auto it = indexes_.find(key);
     if (it == indexes_.end()) {
-        auto idx = std::make_unique<NumericIndex>(NumericIndex::build(store_->signal(real), isSigned));
+        auto idx = std::make_unique<NumericIndex>(NumericIndex::build(signal, isSigned));
         it = indexes_.emplace(key, std::move(idx)).first;
     }
     return it->second.get();
 }
 
+Time WaveWidget::spanEnd() const {
+    return space_.endTime();
+}
+
 void WaveWidget::rebuildRows() {
     rows_.clear();
+    for (auto& [key, e] : exprCache_)
+        e.used = false;
+    for (auto& [key, e] : compareCache_)
+        e.used = false;
     int y = 0;
     auto push = [&](Row r) {
         const bool analog = r.source && r.source->waveClass() == WaveClass::Analog;
-        r.h = analog ? std::max(1, r.item->analog.heightRows) * kRowHeight : kRowHeight;
+        r.h = r.bit >= 0 ? kRowHeight : rowHeightPx(*r.item, analog);
         r.y = y;
         y += r.h;
         rows_.push_back(std::move(r));
@@ -519,33 +520,62 @@ void WaveWidget::rebuildRows() {
             rev = hashString(rev, m.path);
             rev = fnv(rev, static_cast<std::uint64_t>(m.bit + 1));
         }
+        rev = hashString(rev, it.expr);
+        rev = fnv(rev, it.tolerance);
         rev = fnv(rev, it.analog.enabled);
         rev = fnv(rev, it.analog.autoRange);
         rev = hashDouble(rev, it.analog.min);
         rev = hashDouble(rev, it.analog.max);
         rev = fnv(rev, static_cast<std::uint64_t>(it.analog.interpolation));
-        rev = fnv(rev, it.analog.isSigned);
+        rev = fnv(rev, analogSigned(it));
         rev = fnv(rev, it.color ? (*it.color | 0x1000000u) : 0u);
         r.revision = rev;
         r.cacheKey = identityKey(it.id, -1);
 
-        SignalId signalId = kNoSignal;
-        if (store_ && it.kind == ItemKind::Signal) {
-            signalId = store_->findSignal(it.path);
-            if (signalId != kNoSignal) {
-                const Signal& sig = store_->signal(signalId);
-                const NumericIndex* idx =
-                    it.analog.enabled ? numericIndexFor(signalId, it.analog.isSigned) : nullptr;
-                r.source = std::make_shared<SignalSource>(sig, idx, it.analog.enabled);
-                r.expandable = sig.kind() == SignalKind::Logic && sig.width() > 1;
+        const Signal* data = nullptr;
+        if (it.kind == ItemKind::Signal) {
+            data = space_.findPath(it.path);
+            if (data != nullptr)
+                r.dataEnd = space_.endTimeOf(it.path);
+            if (data == nullptr) {
+                const auto split = WaveSpace::split(it.path);
+                r.error =
+                    space_.store(split.dataset) == nullptr && !split.dataset.empty()
+                        ? tr("no dataset named %1").arg(QString::fromStdString(std::string(split.dataset)))
+                        : tr("not in the waveform");
             }
-        } else if (store_ && it.kind == ItemKind::VirtualBus) {
+        } else if (it.kind == ItemKind::Expression) {
+            data = expressionSignal(it, &r.error, &r.dataEnd);
+        } else if (it.kind == ItemKind::Compare) {
+            data = compareSignal(it, &r.error);
+            r.dataEnd = compareUntil(it);
+        } else if (it.kind == ItemKind::VirtualBus && !it.members.empty()) {
+            for (const BusMember& m : it.members)
+                if (space_.storeOf(m.path) != nullptr)
+                    r.dataEnd = std::min(r.dataEnd, space_.endTimeOf(m.path));
+        }
+        if (r.dataEnd == std::numeric_limits<Time>::max() && store_)
+            r.dataEnd = store_->endTime();
+        if (data != nullptr) {
+            const bool analog = it.analog.enabled && it.kind != ItemKind::Compare;
+            const NumericIndex* idx = analog ? numericIndexFor(*data, analogSigned(it)) : nullptr;
+            r.source = std::make_shared<SignalSource>(*data, idx, analog);
+            r.signal = data;
+            r.expandable =
+                it.kind != ItemKind::Compare && data->kind() == SignalKind::Logic && data->width() > 1;
+        }
+        if (it.kind == ItemKind::VirtualBus) {
+            const bool analog = it.analog.enabled;
+            const bool isSigned = analogSigned(it);
             std::string key = std::to_string(storeRevision_);
+            key += analog ? (isSigned ? "|as" : "|au") : "|b";
             for (const BusMember& m : it.members)
                 key += '|' + m.path + '#' + std::to_string(m.bit);
             auto found = busCache_.find(key);
             if (found == busCache_.end())
-                found = busCache_.emplace(key, std::make_shared<BusSource>(*store_, it.members)).first;
+                found =
+                    busCache_.emplace(key, std::make_shared<BusSource>(space_, it.members, analog, isSigned))
+                        .first;
             r.source = found->second;
         }
 
@@ -561,26 +591,26 @@ void WaveWidget::rebuildRows() {
         const Row parent = r; // copy for the per-bit rows
         push(std::move(r));
 
-        if (it.showBits && signalId != kNoSignal && parent.expandable) {
-            const SignalId real = store_->resolve(signalId);
-            const std::uint32_t width = store_->signal(real).width();
+        if (it.showBits && data != nullptr && parent.expandable) {
+            const std::uint32_t width = data->width();
             for (std::uint32_t b = width; b-- > 0;) {
                 Row br = parent;
                 br.bit = static_cast<int>(b);
                 br.depth = parent.depth + 1;
                 br.expandable = false;
                 br.revision = fnv(parent.revision, b + 1);
-                auto key = std::make_pair(real, static_cast<int>(b));
+
+                auto key = std::make_pair(data, static_cast<int>(b));
                 auto found = bitCache_.find(key);
                 if (found == bitCache_.end())
-                    found =
-                        bitCache_.emplace(key, std::make_shared<BitSource>(store_->signal(real), b)).first;
+                    found = bitCache_.emplace(key, std::make_shared<BitSource>(*data, b)).first;
                 br.source = found->second;
                 br.cacheKey = identityKey(it.id, br.bit);
                 push(std::move(br));
             }
         }
     }
+    pruneDerivedCaches();
     updateScrollBar();
     if (editor_ != nullptr)
         positionEditor();
@@ -605,7 +635,7 @@ void WaveWidget::updateHBar() {
     if (hbar_ == nullptr)
         return;
     const double t0 = store_ ? static_cast<double>(store_->startTime()) : 0.0;
-    const double end = store_ ? static_cast<double>(store_->endTime()) : 0.0;
+    const double end = store_ ? static_cast<double>(spanEnd()) : 0.0;
     const double span = std::max(1e-9, view_.widthPx * view_.timePerPixel);
     const double total = std::max({end - t0, span, 1.0});
     const double ratio = std::min(1.0, span / total);
@@ -629,7 +659,7 @@ void WaveWidget::hbarMoved(int value) {
     if (hbarSync_ || !store_)
         return;
     const double t0 = static_cast<double>(store_->startTime());
-    const double end = static_cast<double>(store_->endTime());
+    const double end = static_cast<double>(spanEnd());
     view_.widthPx = waveWidth();
     const double span = view_.widthPx * view_.timePerPixel;
     const double total = std::max({end - t0, span, 1.0});
@@ -714,7 +744,7 @@ std::string WaveWidget::rowValueText(int row) const {
     const auto cursor = activeCursorTime();
     if (!r.source || !cursor)
         return {};
-    if (store_ && *cursor > static_cast<double>(store_->endTime()))
+    if (*cursor > static_cast<double>(r.dataEnd))
         return "-"; // no data after the end of the run
     const std::size_t idx = r.source->holdIndex(toTime(*cursor));
     if (idx == kNoIndex)
@@ -786,7 +816,8 @@ void WaveWidget::setRadixForSelection(Radix radix) {
         return;
     Snapshot before{model_, selected_, tr("Change radix")};
     for (DisplayItem* it : items)
-        if (it->kind == ItemKind::Signal || it->kind == ItemKind::VirtualBus)
+        if (it->kind == ItemKind::Signal || it->kind == ItemKind::VirtualBus ||
+            it->kind == ItemKind::Expression)
             it->radix = radix;
     pushUndo(std::move(before));
     rebuildRows();
@@ -799,7 +830,7 @@ void WaveWidget::toggleAnalogForSelection() {
         return;
     Snapshot before{model_, selected_, tr("Toggle analog trace")};
     for (DisplayItem* it : items)
-        if (it->kind == ItemKind::Signal)
+        if (hasAnalogView(*it))
             it->analog.enabled = !it->analog.enabled;
     pushUndo(std::move(before));
     rebuildRows();
@@ -808,20 +839,24 @@ void WaveWidget::toggleAnalogForSelection() {
 
 bool WaveWidget::analogSelectionAvailable() const {
     for (const DisplayItem* it : selectedItems())
-        if (it->kind == ItemKind::Signal && it->analog.enabled) return true;
+        if (hasAnalogView(*it) && it->analog.enabled)
+            return true;
     return false;
 }
 
 std::optional<AnalogRange> WaveWidget::effectiveAnalogRange(int row) const {
-    if (row < 0 || row >= rowCount()) return std::nullopt;
+    if (row < 0 || row >= rowCount())
+        return std::nullopt;
     const Row& r = rows_[static_cast<std::size_t>(row)];
-    if (!r.source || r.source->waveClass() != WaveClass::Analog || r.bit >= 0) return std::nullopt;
+    if (!r.source || r.source->waveClass() != WaveClass::Analog || r.bit >= 0)
+        return std::nullopt;
     std::optional<AnalogRange> data;
     if (r.item->analog.autoRange) {
         const NumericIndex* idx = r.source->numeric();
         if (idx != nullptr && idx->valid() && idx->size() != 0) {
             const MinMax all = idx->range(0, idx->size());
-            if (!all.empty()) data = AnalogRange{all.min, all.max};
+            if (!all.empty())
+                data = AnalogRange{all.min, all.max};
         }
     }
     return resolveAnalogRange(r.item->analog, data);
@@ -831,23 +866,28 @@ bool WaveWidget::setAnalogRangeForSelection(bool autoRange, double min, double m
     lastEditError_.clear();
     std::vector<DisplayItem*> targets;
     for (DisplayItem* it : selectedItems())
-        if (it->kind == ItemKind::Signal && it->analog.enabled) targets.push_back(it);
+        if (hasAnalogView(*it) && it->analog.enabled)
+            targets.push_back(it);
     auto refuse = [&](const QString& why) {
         lastEditError_ = why;
         emit editRejected(why);
         return false;
     };
-    if (targets.empty()) return refuse(tr("No analog row is selected"));
+    if (targets.empty())
+        return refuse(tr("No analog row is selected"));
     if (!autoRange) {
         const std::string why = analogRangeError(min, max);
-        if (!why.empty()) return refuse(tr("Invalid analog range: %1").arg(QString::fromStdString(why)));
+        if (!why.empty())
+            return refuse(tr("Invalid analog range: %1").arg(QString::fromStdString(why)));
     }
     bool changes = false;
     for (const DisplayItem* it : targets) {
         const AnalogSettings& a = it->analog;
-        if (a.autoRange != autoRange || (!autoRange && (a.min != min || a.max != max))) changes = true;
+        if (a.autoRange != autoRange || (!autoRange && (a.min != min || a.max != max)))
+            changes = true;
     }
-    if (!changes) return false;
+    if (!changes)
+        return false;
     Snapshot before{model_, selected_, autoRange ? tr("Analog range: auto") : tr("Analog range: manual")};
     for (DisplayItem* it : targets) {
         it->analog.autoRange = autoRange;
@@ -865,12 +905,15 @@ bool WaveWidget::setAnalogRangeForSelection(bool autoRange, double min, double m
 bool WaveWidget::showAnalogSettings(int row) {
     // The row the dialog starts from: the clicked row if it is an analog trace, else the first selected one.
     int primary = -1;
-    if (row >= 0 && effectiveAnalogRange(row) && isSelected(rows_[static_cast<std::size_t>(row)])) primary = row;
+    if (row >= 0 && effectiveAnalogRange(row) && isSelected(rows_[static_cast<std::size_t>(row)]))
+        primary = row;
     for (int i = 0; primary < 0 && i < rowCount(); ++i)
         if (rows_[static_cast<std::size_t>(i)].bit < 0 && isSelected(rows_[static_cast<std::size_t>(i)]) &&
-            rows_[static_cast<std::size_t>(i)].item->analog.enabled && rows_[static_cast<std::size_t>(i)].item->kind == ItemKind::Signal)
+            rows_[static_cast<std::size_t>(i)].item->analog.enabled &&
+            rows_[static_cast<std::size_t>(i)].item->kind != ItemKind::Compare)
             primary = i;
-    if (primary < 0) return false;
+    if (primary < 0)
+        return false;
 
     const AnalogSettings& a = rows_[static_cast<std::size_t>(primary)].item->analog;
     AnalogSettingsInput in;
@@ -883,7 +926,8 @@ bool WaveWidget::showAnalogSettings(int row) {
     }
     AnalogSettingsDialog dialog(in, this);
     const bool accepted = analogRunner_ ? analogRunner_(dialog) : dialog.exec() == QDialog::Accepted;
-    if (!accepted || !dialog.isValid()) return false;
+    if (!accepted || !dialog.isValid())
+        return false;
     const AnalogSettingsChoice c = dialog.choice();
     return setAnalogRangeForSelection(c.autoRange, c.min, c.max);
 }
@@ -932,12 +976,8 @@ bool WaveWidget::busFromSelection(const std::string& label) {
     // A whole signal counts as several bits, so one wide signal alone is not a bus.
     std::size_t bits = 0;
     for (const BusMember& m : members) {
-        if (m.bit >= 0 || !store_) {
-            ++bits;
-            continue;
-        }
-        const SignalId id = store_->findSignal(m.path);
-        bits += id == kNoSignal ? 1 : store_->signal(id).width();
+        const Signal* s = m.bit >= 0 ? nullptr : space_.findPath(m.path);
+        bits += s == nullptr ? 1 : s->width();
     }
     if (members.size() < 2 && bits < 2)
         return false;
@@ -1138,12 +1178,30 @@ void WaveWidget::showTimeFs(long long fs) {
 }
 
 bool WaveWidget::event(QEvent* e) {
+    if (e->type() == QEvent::KeyPress) {
+        // Tab / Shift+Tab step through the edges; they must not move the keyboard focus to the next widget.
+        const auto* ke = static_cast<QKeyEvent*>(e);
+        const bool plain = !(ke->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier));
+        if (plain && (ke->key() == Qt::Key_Tab || ke->key() == Qt::Key_Backtab)) {
+            jumpToEdge(ke->key() == Qt::Key_Tab && !(ke->modifiers() & Qt::ShiftModifier) ? +1 : -1);
+            e->accept();
+            return true;
+        }
+    }
     if (e->type() == QEvent::ToolTip) {
         const auto* he = static_cast<QHelpEvent*>(e);
+        const int tipRow = he->pos().x() < waveLeft() ? rowAtY(he->pos().y()) : -1;
         if (const auto g = eventGroupAt(he->pos())) {
             const QString html = QStringLiteral("<p style=\"white-space:pre\">") +
                                  eventGroupText(*g).toHtmlEscaped() + QStringLiteral("</p>");
             QToolTip::showText(he->globalPos(), html, this);
+        } else if (tipRow >= 0 && !rowError(tipRow).isEmpty()) {
+            QToolTip::showText(he->globalPos(), rowError(tipRow), this);
+        } else if (tipRow >= 0 &&
+                   rows_[static_cast<std::size_t>(tipRow)].item->kind == ItemKind::Expression) {
+            QToolTip::showText(he->globalPos(),
+                               QString::fromStdString(rows_[static_cast<std::size_t>(tipRow)].item->expr),
+                               this);
         } else {
             QToolTip::hideText();
             e->ignore();
@@ -1156,41 +1214,6 @@ bool WaveWidget::event(QEvent* e) {
 // ---------------------------------------------------------------------------------------------
 // Navigation
 
-bool WaveWidget::jumpToEdge(int dir) {
-    if (dir == 0)
-        return false;
-    std::vector<const RowSource*> sources;
-    for (const Row& r : rows_)
-        if (r.source && isSelected(r))
-            sources.push_back(r.source.get());
-    if (sources.empty())
-        for (const Row& r : rows_)
-            if (r.source && r.bit < 0)
-                sources.push_back(r.source.get());
-
-    const auto cursor = activeCursorTime();
-    const double ref = cursor ? *cursor : view_.startTime;
-    const Time t = toTime(ref);
-
-    std::optional<double> target;
-    for (const RowSource* s : sources) {
-        const auto e = edgeFrom(*s, t, dir);
-        if (!e)
-            continue;
-        if (!target || (dir > 0 ? *e < *target : *e > *target))
-            target = e;
-    }
-    if (!target)
-        return false;
-
-    if (cursorCount() == 0)
-        setCursorTime(0, target);
-    else
-        setCursorTime(activeCursor_, target);
-    ensureVisible(*target);
-    return true;
-}
-
 void WaveWidget::goToStart() {
     viewPannedByUser();
     const double t = store_ ? static_cast<double>(store_->startTime()) : 0.0;
@@ -1202,7 +1225,7 @@ void WaveWidget::goToStart() {
 
 void WaveWidget::goToEnd() {
     viewPannedByUser();
-    const double t = store_ ? static_cast<double>(store_->endTime()) : 0.0;
+    const double t = store_ ? static_cast<double>(spanEnd()) : 0.0;
     setCursorTime(cursorCount() == 0 ? 0 : activeCursor_, t);
     view_.widthPx = waveWidth();
     view_.startTime = std::max(0.0, t - view_.widthPx * 0.9 * view_.timePerPixel);
@@ -1288,7 +1311,7 @@ void WaveWidget::paintEvent(QPaintEvent*) {
     p.setPen(palette_.grid);
     p.drawLine(nameWidth_, 0, nameWidth_, height());
     p.drawLine(waveLeft(), 0, waveLeft(), height());
-    if (drag_ == Drag::Rows)
+    if (drag_ == Drag::Rows || drag_ == Drag::Signals)
         drawDropIndicator(p);
 }
 
@@ -1414,7 +1437,11 @@ void WaveWidget::drawRow(QPainter& p, int rowIndex, int top) {
     Row& row = rows_[static_cast<std::size_t>(rowIndex)];
     const DisplayItem& it = *row.item;
     const int right = effectiveWaveRight();
-    const QFontMetrics fm(font());
+    const int band = labelBand(row); // name, value and bus text are centred in it
+    const QFont rowFontNow = rowFont(band);
+    p.save();
+    p.setFont(rowFontNow);
+    const QFontMetrics fm(rowFontNow);
 
     if (isSelected(row))
         p.fillRect(QRect(0, top, right, row.h), palette_.selection);
@@ -1430,7 +1457,7 @@ void WaveWidget::drawRow(QPainter& p, int rowIndex, int top) {
         const bool open = it.kind == ItemKind::Group ? it.expanded : it.showBits;
         p.setPen(palette_.text);
         p.setBrush(palette_.text);
-        const int cy = top + kRowHeight / 2;
+        const int cy = top + band / 2;
         QPolygon tri;
         if (open)
             tri << QPoint(x, cy - 3) << QPoint(x + 8, cy - 3) << QPoint(x + 4, cy + 3);
@@ -1442,7 +1469,8 @@ void WaveWidget::drawRow(QPainter& p, int rowIndex, int top) {
     if (it.kind != ItemKind::Divider)
         x += 14;
 
-    const bool missing = !row.source && (it.kind == ItemKind::Signal || it.kind == ItemKind::VirtualBus);
+    const bool missing = !row.source && (it.kind == ItemKind::Signal || it.kind == ItemKind::VirtualBus ||
+                                         it.kind == ItemKind::Expression || it.kind == ItemKind::Compare);
     QColor nameColor = palette_.text;
     if (it.kind == ItemKind::Divider)
         nameColor = palette_.dense;
@@ -1453,31 +1481,44 @@ void WaveWidget::drawRow(QPainter& p, int rowIndex, int top) {
     p.setPen(nameColor);
     const QString name =
         fm.elidedText(QString::fromStdString(nameOf(row)), Qt::ElideLeft, nameWidth_ - x - 6);
-    p.drawText(QRect(x, top, nameWidth_ - x - 4, kRowHeight), Qt::AlignVCenter | Qt::AlignLeft, name);
+    p.drawText(QRect(x, top, nameWidth_ - x - 4, band), Qt::AlignVCenter | Qt::AlignLeft, name);
     p.restore();
 
     // Value column.
+    if (!row.source && !row.error.isEmpty() &&
+        (it.kind == ItemKind::Expression || it.kind == ItemKind::Compare)) {
+        p.save();
+        p.setClipRect(QRect(nameWidth_ + 1, top, valueWidth_ - 2, row.h));
+        p.setPen(palette_.unknown);
+        p.drawText(QRect(nameWidth_ + 6, top, valueWidth_ - 8, band), Qt::AlignVCenter | Qt::AlignLeft,
+                   fm.elidedText(row.error, Qt::ElideRight, valueWidth_ - 10));
+        p.restore();
+    }
     if (row.source) {
         p.save();
         p.setClipRect(QRect(nameWidth_ + 1, top, valueWidth_ - 2, row.h));
         p.setPen(palette_.bus);
         const QString v =
             fm.elidedText(QString::fromStdString(rowValueText(rowIndex)), Qt::ElideRight, valueWidth_ - 10);
-        p.drawText(QRect(nameWidth_ + 6, top, valueWidth_ - 8, kRowHeight), Qt::AlignVCenter | Qt::AlignLeft,
-                   v);
+        p.drawText(QRect(nameWidth_ + 6, top, valueWidth_ - 8, band), Qt::AlignVCenter | Qt::AlignLeft, v);
         p.restore();
     }
 
     // Wave area.
-    if (gpuActive_)
+    if (gpuActive_) {
+        p.restore();
         return; // drawn by the GPU canvas, labels by the overlay
+    }
     if (it.kind == ItemKind::Divider) {
         p.setPen(palette_.dense);
-        p.drawLine(waveLeft(), top + kRowHeight / 2, right, top + kRowHeight / 2);
+        p.drawLine(waveLeft(), top + row.h / 2, right, top + row.h / 2);
+        p.restore();
         return;
     }
-    if (!row.source)
+    if (!row.source) {
+        p.restore();
         return;
+    }
 
     p.save();
     p.setClipRect(QRect(waveLeft() + 1, top, right - waveLeft() - 1, row.h));
@@ -1502,7 +1543,7 @@ void WaveWidget::drawRow(QPainter& p, int rowIndex, int top) {
             req.tileIndex = k;
             req.widthPx = IRenderer::kTileWidth;
             req.heightPx = row.h;
-            req.validEnd = dataEnd();
+            req.validEnd = row.dataEnd;
             cache_.put(key, renderer_->renderTile(req));
             img = cache_.find(key);
         }
@@ -1513,6 +1554,7 @@ void WaveWidget::drawRow(QPainter& p, int rowIndex, int top) {
     }
     drawBusLabels(p, row, top);
     p.restore();
+    p.restore(); // the row font
 }
 
 void WaveWidget::drawBusLabels(QPainter& p, const Row& row, int top) const {
@@ -1531,7 +1573,7 @@ void WaveWidget::drawBusLabels(QPainter& p, const Row& row, int top) const {
     };
     std::vector<Seg> segs;
     const double tail =
-        static_cast<double>(dataEnd()); // the last value is held up to the end of the data only
+        static_cast<double>(row.dataEnd); // the last value is held up to the end of the data only
     const std::size_t n = src.count();
     if (lo > 0)
         segs.push_back({t0, lo < n ? static_cast<double>(src.time(lo)) : tail, lo - 1});
@@ -1539,7 +1581,11 @@ void WaveWidget::drawBusLabels(QPainter& p, const Row& row, int top) const {
         segs.push_back(
             {static_cast<double>(src.time(i)), i + 1 < n ? static_cast<double>(src.time(i + 1)) : tail, i});
 
-    const QFontMetrics fm(font());
+    const int band = labelBand(row);
+    const QFont f = rowFont(band);
+    p.save();
+    p.setFont(f);
+    const QFontMetrics fm(f);
     p.setPen(row.style.hasColor ? row.style.color : palette_.text);
     for (const Seg& s : segs) {
         const double xa = std::max(s.a, t0), xb = std::min(s.b, t1);
@@ -1549,8 +1595,9 @@ void WaveWidget::drawBusLabels(QPainter& p, const Row& row, int top) const {
             continue;
         const QString text = fm.elidedText(QString::fromStdString(src.text(s.change, row.item->radix)),
                                            Qt::ElideRight, static_cast<int>(w) - 10);
-        p.drawText(QRectF(x0, top, w, kRowHeight), Qt::AlignCenter, text);
+        p.drawText(QRectF(x0, top, w, band), Qt::AlignCenter, text);
     }
+    p.restore();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1576,6 +1623,8 @@ void WaveWidget::mousePressEvent(QMouseEvent* e) {
         drag_ = Drag::ValueSplitter;
         return;
     }
+    if (const int border = rowBorderAt(pos); border >= 0 && beginRowResize(border, pos.y()))
+        return; // the bottom border of a row in the name or value column: resize it
 
     const bool shift = e->modifiers() & Qt::ShiftModifier;
     const bool ctrl = e->modifiers() & Qt::ControlModifier;
@@ -1675,6 +1724,11 @@ void WaveWidget::mouseMoveEvent(QMouseEvent* e) {
     case Drag::Rows:
         updateRowDrag(pos);
         break;
+    case Drag::Signals: // driven by the drag events, not by the mouse
+        break;
+    case Drag::RowHeight:
+        updateRowResize(pos.y());
+        break;
     case Drag::None:
         if (rowPressPending_ && (pos - pressPos_).manhattanLength() >= QApplication::startDragDistance()) {
             if (startRowDrag()) {
@@ -1685,6 +1739,8 @@ void WaveWidget::mouseMoveEvent(QMouseEvent* e) {
         }
         if (std::abs(pos.x() - nameWidth_) <= 3 || std::abs(pos.x() - waveLeft()) <= 3)
             setCursor(Qt::SplitHCursor);
+        else if (rowBorderAt(pos) >= 0)
+            setCursor(Qt::SizeVerCursor);
         else if (eventGroupAt(pos))
             setCursor(Qt::PointingHandCursor);
         else if (pos.x() > waveLeft() && cursorNear(pos.x()) >= 0)
@@ -1697,14 +1753,17 @@ void WaveWidget::mouseMoveEvent(QMouseEvent* e) {
 }
 
 void WaveWidget::mouseReleaseEvent(QMouseEvent* e) {
-    if (drag_ == Drag::Rows) {
+    if (drag_ == Drag::RowHeight) {
+        updateRowResize(e->position().toPoint().y());
+        finishRowResize();
+    } else if (drag_ == Drag::Rows) {
         finishRowDrag(e->position().toPoint());
     } else if (rowPressPending_ && deferSelect_ && pressRow_ >= 0 && pressRow_ < rowCount()) {
         selectRow(pressRow_); // a click on one of several selected rows selects just that row
     }
     rowPressPending_ = false;
     deferSelect_ = false;
-    if (drag_ != Drag::Rows)
+    if (drag_ != Drag::Rows && drag_ != Drag::Signals)
         drag_ = Drag::None;
 }
 
@@ -1718,6 +1777,8 @@ void WaveWidget::mouseDoubleClickEvent(QMouseEvent* e) {
         toggleGroup(row);
     else if (kind == ItemKind::Divider)
         beginRename(row);
+    else if (kind == ItemKind::Expression && rows_[static_cast<std::size_t>(row)].bit < 0)
+        showExpressionDialog(rows_[static_cast<std::size_t>(row)].item->id);
     else
         toggleBits(row);
 }
@@ -1755,14 +1816,26 @@ void WaveWidget::keyPressEvent(QKeyEvent* e) {
             cancelRowDrag();
             return;
         }
+        if (drag_ == Drag::RowHeight) {
+            cancelRowResize();
+            return;
+        }
         break;
     case Qt::Key_F2:
         if (!ctrl && !shift)
             beginRename();
         return;
+    case Qt::Key_F3:
+        if (!ctrl)
+            findAgain(shift ? -1 : +1);
+        return;
     case Qt::Key_Up:
     case Qt::Key_Down: {
         const int dir = e->key() == Qt::Key_Down ? 1 : -1;
+        if (e->modifiers() & Qt::AltModifier) { // Alt+Down taller, Alt+Up lower, in steps of 2 pixels
+            adjustRowHeightForSelection(2 * dir);
+            return;
+        }
         if (ctrl && shift)
             moveSelectedRowsToEdge(dir < 0);
         else if (ctrl)
@@ -1858,6 +1931,19 @@ QMenu* WaveWidget::createContextMenu(int row) {
 
     QMenu* menu = new QMenu(this);
     menu->setObjectName("waveContextMenu");
+    if (declarationGate_) {
+        // Signal rows (and the bit rows below them) have a declaration; expressions, buses and groups do not.
+        const DisplayItem* item = row >= 0 ? rows_[static_cast<std::size_t>(row)].item : nullptr;
+        const bool signal = item != nullptr && item->kind == ItemKind::Signal;
+        const QString path = signal ? QString::fromStdString(item->path) : QString();
+        const QString why = signal ? declarationGate_(path) : tr("Only signal rows have a declaration");
+        QAction* decl = menu->addAction(tr("View Declaration"));
+        decl->setObjectName("viewDeclaration");
+        decl->setEnabled(signal && why.isEmpty());
+        decl->setToolTip(why);
+        connect(decl, &QAction::triggered, this, [this, path] { emit declarationRequested(path); });
+        menu->addSeparator();
+    }
     QMenu* radix = menu->addMenu(tr("Radix"));
     for (Radix r : {Radix::Binary, Radix::Octal, Radix::Hex, Radix::Unsigned, Radix::Signed, Radix::Ascii,
                     Radix::Default}) {
@@ -1899,6 +1985,11 @@ QMenu* WaveWidget::createContextMenu(int row) {
     analogSettings->setEnabled(analogSelectionAvailable());
     analogSettings->setToolTip(tr("Auto or manual (Min, Max) range of the selected analog traces"));
     connect(analogSettings, &QAction::triggered, this, [this, row] { showAnalogSettings(row); });
+    QAction* height = menu->addAction(tr("Height..."));
+    height->setObjectName("rowHeight");
+    height->setEnabled(heightSelectionAvailable());
+    height->setToolTip(tr("Height in pixels of the selected rows"));
+    connect(height, &QAction::triggered, this, [this, row] { showRowHeightDialog(row); });
     if (row >= 0 && rows_[static_cast<std::size_t>(row)].expandable) {
         QAction* bits = menu->addAction(
             rows_[static_cast<std::size_t>(row)].item->showBits ? tr("Hide bits") : tr("Show bits"));
@@ -1911,6 +2002,8 @@ QMenu* WaveWidget::createContextMenu(int row) {
             [this] { busFromSelection(); });
     connect(menu->addAction(tr("Add divider...")), &QAction::triggered, this,
             [this] { promptInsertDivider(); });
+    menu->addSeparator();
+    populateDerivedMenu(menu, row);
     if (row >= 0 && rows_[static_cast<std::size_t>(row)].item->kind == ItemKind::Group) {
         menu->addSeparator();
         connect(menu->addAction(tr("Expand / collapse")), &QAction::triggered, this,
@@ -1931,8 +2024,19 @@ void WaveWidget::dataChanged() {
     cache_.clear();
     busCache_.clear();
     bitCache_.clear();
+    // Expression and compare rows follow the run incrementally: only the new changes are read.
+    for (auto& [key, e] : exprCache_)
+        if (e.signal)
+            e.signal->update();
+    for (auto& [key, e] : compareCache_)
+        if (e.compare) {
+            const auto nl = key.find('\n');
+            const auto nl2 = key.find('\n', nl + 1);
+            e.compare->update(std::min(space_.endTimeOf(std::string_view(key).substr(0, nl)),
+                                       space_.endTimeOf(std::string_view(key).substr(nl + 1, nl2 - nl - 1))));
+        }
     for (auto& [key, idx] : indexes_)
-        idx->update(store_->signal(key.first));
+        idx->update(*key.first);
 
     view_.widthPx = waveWidth();
     const double end = static_cast<double>(store_->endTime());
@@ -1942,7 +2046,7 @@ void WaveWidget::dataChanged() {
     if (follow_ && !autoFit_) {
         view_.startTime = std::max(0.0, end - view_.widthPx * view_.timePerPixel);
     } else if (autoFit_) {
-        view_.fit(static_cast<double>(store_->startTime()), end);
+        view_.fit(static_cast<double>(store_->startTime()), std::max(end, static_cast<double>(spanEnd())));
     } else if (wasAtEnd && end > view_.endTime()) {
         view_.startTime = std::max(0.0, end - view_.widthPx * view_.timePerPixel);
     }
@@ -1952,9 +2056,12 @@ void WaveWidget::dataChanged() {
 }
 
 std::size_t WaveWidget::addWaveSignals(const AddWaveRequest& request) {
-    if (!store_)
+    lastEditError_.clear();
+    if (!store_ && space_.datasetNames().empty())
         return 0;
-    const std::size_t n = applyAddWave(model_, *store_, request);
+    std::string why;
+    const std::size_t n = applyAddWave(model_, space_, request, &why);
+    lastEditError_ = QString::fromStdString(why);
     clearUndoHistory();
     selected_.clear();
     rebuildRows();
@@ -1970,9 +2077,9 @@ std::string WaveWidget::doScript() const {
 
 ImportResult WaveWidget::loadDoScript(const std::string& script) {
     ImportResult none;
-    if (!store_)
+    if (!store_ && space_.datasetNames().empty())
         return none;
-    const ImportResult r = importDoScript(script, model_, *store_);
+    const ImportResult r = importDoScript(script, model_, space_);
     clearUndoHistory();
     selected_.clear();
     rebuildRows();
@@ -2060,7 +2167,7 @@ GpuFrame WaveWidget::buildGpuFrame(const QSize& size) {
         f.rects.push_back(
             {0, static_cast<float>(top + row.h - 1), static_cast<float>(W), 1, Rgba{0x28, 0x28, 0x28, 255}});
         if (row.item->kind == ItemKind::Divider) {
-            f.rects.push_back({0, static_cast<float>(top + kRowHeight / 2), static_cast<float>(W), 1,
+            f.rects.push_back({0, static_cast<float>(top + row.h / 2), static_cast<float>(W), 1,
                                Rgba::from(palette_.dense)});
             continue;
         }
@@ -2090,7 +2197,7 @@ GpuFrame WaveWidget::buildGpuFrame(const QSize& size) {
             req.tileIndex = k;
             req.widthPx = IRenderer::kTileWidth;
             req.heightPx = row.h;
-            req.validEnd = dataEnd();
+            req.validEnd = row.dataEnd;
             requests->emplace(key, req);
         }
     }

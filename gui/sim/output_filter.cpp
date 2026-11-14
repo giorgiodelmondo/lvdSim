@@ -69,9 +69,10 @@ FilteredOutput OutputFilter::feed(const QByteArray& chunk) {
         } else if (rest.startsWith(json)) {
             // A -json reply: its own line, cut out of the text. It belongs to the command whose prompt was
             // the last one before it, so count the prompts that are still ahead in this data.
+            // The prompts on this line before the reply are not ahead of it.
             JsonLine r;
             r.text = QString::fromUtf8(rest);
-            r.prompt = promptsTotal_ - static_cast<int>(data.mid(start).count(marker));
+            r.prompt = promptsTotal_ - static_cast<int>(data.mid(start + lead.size()).count(marker));
             out.text += show(lead);
             r.textOffset = out.text.size();
             out.replies.push_back(std::move(r));
@@ -89,8 +90,10 @@ FilteredOutput OutputFilter::feed(const QByteArray& chunk) {
         return !tailRest.isEmpty() && (p.startsWith(tailRest) || tailRest.startsWith(p));
     };
     if (!tail.isEmpty()) {
+        // Held back in front of what is already pending (half a prompt or a CR): losing half a prompt would
+        // leave the session busy for ever.
         if (couldBe(prefix) || couldBe(json))
-            pending_ = tail;
+            pending_ = tail + pending_;
         else
             out.text += show(tail);
     }

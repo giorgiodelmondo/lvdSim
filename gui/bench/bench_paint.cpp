@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Paint benchmark for the wave widget on a large synthetic in-memory trace.
-// Usage: bench_paint [signals] [changes_total] [width] [height]
+// Usage: bench_paint [signals] [changes_total] [width] [height] [varied]
+// "varied" gives the rows many different heights (14 .. 103 px, analog rows too) to compare with the uniform default.
 #include "rhi/gpu_wave_renderer.hpp"
+#include "wave/painter_renderer.hpp"
 #include "wave/wave_widget.hpp"
 
 #include <QApplication>
@@ -10,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <random>
+#include <string>
 
 using namespace lvd::gui;
 using namespace lvd::wave;
@@ -28,6 +31,7 @@ int main(int argc, char** argv) {
     const std::uint64_t total = argc > 2 ? std::strtoull(argv[2], nullptr, 10) : 10000000ull;
     const int width = argc > 3 ? std::atoi(argv[3]) : 1920;
     const int height = argc > 4 ? std::atoi(argv[4]) : 1080;
+    const bool varied = argc > 5 && std::string(argv[5]) == "varied";
 
     QElapsedTimer t;
     t.start();
@@ -73,6 +77,7 @@ int main(int argc, char** argv) {
     for (int i = 0; i < nsig; ++i) {
         DisplayItem it = DisplayModel::makeSignal("top.s" + std::to_string(i), Radix::Hex);
         if (kind[static_cast<std::size_t>(i)] == 2) it.analog.enabled = true;
+        if (varied) it.heightPx = 14 + (i * 13) % 90;
         model.root().children.push_back(std::move(it));
     }
 
@@ -81,7 +86,7 @@ int main(int argc, char** argv) {
     w.setDisplayModel(std::move(model));
     t.restart();
     w.setStore(store);
-    std::printf("set store + rows: %.0f ms (%d rows)\n", msSince(t), w.rowCount());
+    std::printf("set store + rows: %.0f ms (%d rows%s)\n", msSince(t), w.rowCount(), varied ? ", varied heights" : "");
 
     auto frame = [&] {
         QElapsedTimer ft;
@@ -116,6 +121,43 @@ int main(int argc, char** argv) {
         pan += frame();
     }
     std::printf("pan 40 px per frame:  avg %6.1f ms\n", pan / panSteps);
+
+    // ---- virtual bus as an analog trace: the extra cost of composing values into a min/max index -----------
+    {
+        WaveSpace space;
+        space.setCurrent(store);
+        std::vector<BusMember> members; // low bytes of two busy 32-bit buses and two clocks: 18 bits
+        for (int i = 0; i < nsig && members.size() < 18; ++i) {
+            const std::string path = "top.s" + std::to_string(i);
+            if (kind[static_cast<std::size_t>(i)] == 1)
+                for (int b = 7; b >= 0 && members.size() < 16; --b)
+                    members.emplace_back(path, b);
+        }
+        members.emplace_back("top.s0");
+        members.emplace_back("top.s1");
+        QElapsedTimer bt;
+        bt.start();
+        const BusSource plain(space, members);
+        const double plainMs = msSince(bt);
+        bt.restart();
+        const BusSource analog(space, members, true);
+        const double analogMs = msSince(bt);
+        PainterRenderer pr;
+        TileRequest q;
+        q.source = &analog;
+        q.widthPx = IRenderer::kTileWidth;
+        q.heightPx = 88;
+        q.timePerPixel = static_cast<double>(store->endTime()) / width;
+        bt.restart();
+        const int tiles = (width + IRenderer::kTileWidth - 1) / IRenderer::kTileWidth;
+        for (int i = 0; i < tiles; ++i) {
+            q.tileIndex = i;
+            pr.renderTile(q);
+        }
+        std::printf("virtual bus (%zu members, %zu changes): build %.1f ms, as analog %.1f ms; full-zoom analog row "
+                    "%.1f ms\n",
+                    members.size(), analog.count(), plainMs, analogMs, msSince(bt));
+    }
     // ---- GPU renderer (headless device), same store, same view sequence -----------------------
     QString err;
     auto gpu = GpuOffscreen::create(&err);
@@ -159,5 +201,7 @@ int main(int argc, char** argv) {
     std::printf("GPU pan 40 px per frame:  avg %6.1f ms   (CPU %6.1f ms, speed-up %.1fx)\n", gpan / panSteps,
                 pan / panSteps, pan / gpan);
     std::printf("speed-up: cold full %.1fx, zoom steps %.1fx\n", full / gfull.first, sum / gsum);
+    std::printf("GPU atlases: %zu for %zu row heights, %.0f MB\n", gpu->renderer().atlasCount(),
+                gpu->renderer().atlasHeights(), static_cast<double>(gpu->renderer().atlasBytes()) / 1048576.0);
     return 0;
 }

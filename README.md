@@ -9,7 +9,7 @@ as the kernel can.) The simulation kernel is a small fork of the [NVC](https://g
 scratch (a GPU renderer by default, with a QPainter tile renderer as the always-working fallback), the classic simulator command names
 `vlib`, `vmap`, `vcom`, `vlog` and `vsim`, and a Tcl command layer (`add wave`, `run`, `force`, `examine`, ...).
 
-![lvdsim main window simulating the mixed_language example: analog row, buses, cursors with a delta label](docs/images/hero.png)
+![lvdsim main window simulating the mixed_language example: analog row, buses, cursors with a delta label, stopped at a source-line breakpoint with call stack and locals](docs/images/hero.png)
 
 The same window and the same session captured while the simulation runs (status bar `Now: 200 ns`, `600 ns`, then `2 us`; nothing is
 reloaded between the captures; the [tutorial](docs/tutorial.md#2-run-a-design-in-the-gui-live) shows all three and a mid-run capture of a long run):
@@ -19,7 +19,6 @@ reloaded between the captures; the [tutorial](docs/tutorial.md#2-run-a-design-in
 
 ## Features
 
-State at 0.1.0 (Windows is the tested platform). Details and caveats are in the linked documents.
 
 - **Live waveform**: the GUI starts the simulator as a child process and reads the waveform from a live stream while the simulation runs.
   Signals appear and extend as simulation time advances; there is no separate "simulate, write a file, open the waveform" step. You can
@@ -33,11 +32,37 @@ State at 0.1.0 (Windows is the tested platform). Details and caveats are in the 
 - **Command line**: `vlib`, `vmap`, `vcom`, `vlog`, `vsim -c -do ...` accept the familiar option spellings and translate them to `nvc`;
   `lvdsim.ini` maps libraries. The Tcl package `tcl/compat/lvdcompat.tcl` provides `add wave`, `force`, `noforce`, `examine`, `log` and friends.
   See [docs/command-compat.md](docs/command-compat.md).
-- **GUI** (`lvdsim-gui`): Library, Sim (structure), Objects, Processes, Source, Breakpoints, Transcript and Wave docks; run, run -all,
-  restart, stop; time breakpoints; step delta and step time; transcript command line.
+- **GUI** (`lvdsim-gui`): Library, Sim (structure), Project, Objects (with in/out/inout/buffer/internal icons), Processes, Source,
+  Breakpoints, Call Stack, Locals, List, Memory, Coverage, Transcript and Wave docks; run, run -all, stop; time breakpoints; step delta
+  and step time; drag signals from Objects to the wave, List or Memory window.
+- **Source debugger**: click in the Source margin (or F9) for a line breakpoint, then Continue (F5), Step Into (F11), Step Over (F10)
+  and Step Out (Shift+F11); the current line is marked, Call Stack and Locals show the frames and variables of the stopped process
+  (changed values highlighted). Verilog `$stop` stops the same way.
+- **Restart in place**: `restart` resets the running simulation to time 0 in about 20 ms, keeping breakpoints, forces, Tcl state and
+  the wave setup; after a recompile the GUI starts a new process instead.
 - **Waveform viewer**: from-scratch, driven by a level-of-detail index so zoomed-out views do not iterate events. Digital rows,
-  buses with radix (binary, hex, octal, signed, unsigned, ASCII, enum), analog (`real`) rows, groups, dividers, virtual buses,
-  multiple cursors with delta labels, wave format save and load (`add wave` script). Rows move, group, ungroup and rename by keyboard (Ctrl+Up/Down, Ctrl+G, F2), menu or drag and drop, with undo.
+  buses with radix (binary, hex, octal, signed, unsigned, ASCII, enum), analog (`real`) rows with auto or manual range, groups, dividers,
+  virtual buses, multiple cursors with delta labels, scroll bars and Follow (stay at the end of the run), wave format save and load
+  (`add wave` script). Rows move, group, ungroup and rename by keyboard (Ctrl+Up/Down, Ctrl+G, F2), menu or drag and drop, with undo.
+  Nothing is drawn after the time the run reached.
+- **Search and navigation**: next/previous edge (any, rising, falling; Tab/Shift+Tab), Find value (Ctrl+F, F3) with radix values,
+  wildcards and analog threshold crossings, Go to time.
+- **Expression signals**: rows computed from other signals (`a and not b`, `bus = 16#3F`, `cnt > 100`, slices, concatenation),
+  updated live and usable in search and the List window ([docs/expressions.md](docs/expressions.md)).
+- **Datasets and compare**: open saved FST files next to the live run (`ref:/tb/x`), compare signals or whole scopes with a time
+  tolerance, difference rows and next/previous difference.
+- **List and Memory windows**: a time-by-signal table (1M rows, CSV export, `add list`); an address/data view of VHDL and Verilog
+  memories at the cursor time or live, with search and `$readmemh` export (`add mem`). The shell can `deposit` into array elements and
+  load a memory with `readmem`.
+- **Coverage**: Simulation > Collect coverage (or `vsim -coverage`) and a Coverage dock with per-instance statement, branch, toggle,
+  expression and FSM figures, uncovered lines marked in Source, merge of databases and the HTML report.
+- **Projects and regressions** ([docs/projects.md](docs/projects.md)): a plain-text project file, import from a compile `.do` script,
+  incremental recompile of changed files and their dependants, a Problems list, and a regression runner with parallel jobs, time-outs,
+  rerun-failed, merged coverage and JUnit output (`lvdsim-cli regress`).
+- **Console**: persistent history with Ctrl+R search, Tab completion of commands and design paths, multi-line commands, coloured
+  messages and clickable `file:line` links, drop a `.do` file to run it.
+- **Timing**: SDF back-annotation (`vsim -sdfmin/-sdftyp/-sdfmax`) for VITAL models and Verilog timing checks ([docs/sdf.md](docs/sdf.md));
+  generic overrides `-g`/`-G`, also through generate labels.
 - **Saved traces**: batch runs can save FST files (`-lvdwave`), read through our own Qt-free `libwave`.
 - **Renderers**: the GPU renderer (QRhi, Direct3D 11 on Windows) is the default and falls back to the QPainter tile renderer by itself
   when the GPU cannot be used (remote desktop, virtual machine, offscreen). QPainter is always available and can be forced with
@@ -54,7 +79,7 @@ State at 0.1.0 (Windows is the tested platform). Details and caveats are in the 
 
 Download `lvdsim-<version>-linux-x86_64.run` and run it with sh (no root needed, nothing is downloaded):
 
-    sh lvdsim-0.1.0-linux-x86_64.run
+    sh lvdsim-0.1.5-linux-x86_64.run
 
 It verifies its SHA-256 checksum, installs into `~/.local/opt/lvdsim`, adds symlinks `lvdsim-gui lvdsim-cli vlib vmap vcom vlog vsim` to
 `~/.local/bin`, and a menu entry with an icon. It does **not** edit your `PATH` or shell startup files unless asked: if `~/.local/bin`
@@ -67,11 +92,11 @@ notices: [docs/packaging.md](docs/packaging.md#linux).
 
 ### From the package
 
-Unzip `lvdsim-0.1.0-win64-portable.zip` (a portable copy: settings and compiled libraries stay in its `data` folder), or run the installer (its "Add lvdsim to the PATH" box is ticked by default). Nothing else is needed:
+Unzip `lvdsim-0.1.5-win64-portable.zip` (a portable copy: settings and compiled libraries stay in its `data` folder), or run the installer (its "Add lvdsim to the PATH" box is ticked by default). Nothing else is needed:
 nvc, its libraries and the Tcl package are inside. In a terminal, for this session:
 
 ```bat
-set PATH=C:\tools\lvdsim-0.1.0-win64-portable;%PATH%
+set PATH=C:\tools\lvdsim-0.1.5-win64-portable;%PATH%
 cd examples\mixed_language
 vlib work
 vlog -work work src\avg_filter.v
@@ -129,6 +154,10 @@ ctest --preset linux-release
 
 - [Tutorial](docs/tutorial.md): install, the live GUI flow, tour of the window, reports, vendor libraries, batch flow, common problems
 - [Command compatibility](docs/command-compat.md)
+- [Projects and regressions](docs/projects.md)
+- [Expression signals](docs/expressions.md)
+- [SDF back-annotation](docs/sdf.md)
+- [Changelog](CHANGELOG.md)
 - [Vendor libraries](docs/libraries.md)
 - [Building on Linux](docs/building-linux.md)
 - [Packaging](docs/packaging.md) and [making a release](docs/packaging.md#making-a-release) (one command each for Windows and Linux)
@@ -166,24 +195,25 @@ Thanks also to the authors of Qt, fstapi (libfst) and Catch2.
 
 ## Status and limitations
 
-lvdsim is at version 0.1.0. What does not work yet:
+lvdsim is at version 0.1.5. What does not work yet:
 
-- **Platforms**: Windows is the main platform. Linux x86_64 (glibc 2.38 or newer) is supported by the `.run` installer and was tested only
-  in WSL Debian 13 (no real GPU, not as root, no other distribution). The Windows installer was run per user (install, uninstall, optional PATH entry)
-  on the development machine only, never for all users. There is no macOS build.
+- **Platforms**: Windows and Linux
 - **SystemVerilog** is supported for vendor models only: modules, `logic`, `always_ff` and `always_comb`, enums, packed structs, generate,
   tasks, programs. Classes, interfaces and modports, packages with `import`, queues, associative arrays, `fork`/`join`, concurrent assertions,
   covergroups and DPI do not work; UVM is a non-goal. VHDL-2008 is the testbench language.
-- **Xilinx models**: 303 of 428 Verilog unisim models simulate. Ten do not analyse, and about 110 are wrappers of encrypted secureip modules
-  (transceivers, PCIe, hard IP) that cannot be simulated. `xpm_memory_*` and `xpm_fifo_*` with block memory fail to elaborate;
-  `defparam`, generate-block hierarchical references and MMCM/PLL output frequency are open ([docs/verilog-coverage.md](docs/verilog-coverage.md)).
-  Tested with Vivado 2022.2 only.
-- **Altera models**: the VHDL libraries compile and the basic megafunctions behave; `altera_lnsim` (SystemVerilog) and the Verilog `220model.v`
-  and `altera_mf.v` do not analyse; the Pro `altsyncram` supports Arria 10 and Cyclone 10 GX only. Tested with Quartus Pro 24.2 only
-  ([docs/libraries.md](docs/libraries.md)).
-- **OSVVM and UVVM** are untested; their flows were deferred.
-- **Kernel features still open**: runtime dump control and source-line breakpoints (time breakpoints work); `when` conditions; encrypted IP
-  (IEEE 1735) is out of scope. `examine` cannot print `real` signals; look at them in the wave window.
+- **Xilinx models**: all 428 Verilog unisim files compile and 318 models run; about 110 are wrappers of encrypted secureip modules
+  (transceivers, PCIe, hard IP) that cannot be simulated. `xpm_memory_*` and `xpm_fifo_*` with block memory work; MMCM/PLL output
+  frequency is open ([docs/verilog-coverage.md](docs/verilog-coverage.md)). Tested with Vivado 2022.2 only.
+- **Altera models**: the VHDL libraries compile and the basic megafunctions behave; the Verilog `220model.v` (33 of 33 models) and `altera_mf.v`
+  (113 of 113, including `altsyncram`) run; the `twentynm` and `cyclone10gx` atoms analyse (19 of 66 run, most others need encrypted modules).
+  `altera_lnsim.sv` and `tennm_atoms.sv` do not analyse yet (strings, classes). Tested with Quartus Pro 24.2 only ([docs/libraries.md](docs/libraries.md)).
+- **SDF**: Verilog module path delays (IOPATH, INTERCONNECT) and `$width`/`$period` are not annotated yet; INCREMENT, COND and bus
+  bit selects are skipped with a warning ([docs/sdf.md](docs/sdf.md)).
+- **Debugger**: no conditional breakpoints; locals of functions and of procedures that cannot wait are not shown; Verilog variables
+  are read with `examine` rather than Locals.
+- **OSVVM, UVVM and cocotb** are untested; their flows were deferred.
+- **Kernel features still open**: runtime dump control; `when` conditions; reloading a recompiled design without a new process;
+  encrypted IP (IEEE 1735) is out of scope. `examine` cannot print `real` signals; look at them in the wave window.
 - **GPU renderer**: tested on Direct3D 11 only (on Linux it is untested and falls back to QPainter in WSL); on high-DPI screens it is
   slightly softer than the QPainter renderer.
 - Big runs are slow: the 10 000 signal stress example takes about 90 s for 20 ms of simulated time at 50 MHz.

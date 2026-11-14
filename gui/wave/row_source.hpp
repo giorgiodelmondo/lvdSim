@@ -4,6 +4,7 @@
 #include <lvdwave/display_model.hpp>
 #include <lvdwave/lod.hpp>
 #include <lvdwave/store.hpp>
+#include <lvdwave/wave_space.hpp>
 
 #include <string>
 #include <utility>
@@ -91,13 +92,19 @@ private:
 };
 
 /// A virtual bus: the union of the change times of its members, value composed on demand. A member may
-/// be a whole signal or a single bit. Building is O(total member changes). Members missing from the
-/// store are skipped.
+/// be a whole signal or a single bit, of the current waveform or of a dataset ("ref:tb.x"). Building is
+/// O(total member changes). Members missing from the waveforms read as U (one bit).
+///
+/// With `analog` set the bus is drawn as an analog trace: the composed value of every change is turned into a
+/// number exactly as for a vector signal of the same bits (lvd::wave::numericValueOfBits: unsigned or two's
+/// complement, no value while a bit is unknown) and kept in a min/max index. Buses wider than 64 bits have no
+/// numeric view and stay bus rows, as vectors do. The extra cost is O(changes * members) once per build.
 class BusSource final : public RowSource {
 public:
-    BusSource(const lvd::wave::WaveStore& store, std::vector<lvd::wave::BusMember> members);
+    BusSource(const lvd::wave::WaveSpace& space, std::vector<lvd::wave::BusMember> members,
+              bool analog = false, bool isSigned = false);
 
-    WaveClass waveClass() const override { return WaveClass::Bus; }
+    WaveClass waveClass() const override { return analog_ ? WaveClass::Analog : WaveClass::Bus; }
     std::size_t count() const override { return times_.size(); }
     Time time(std::size_t c) const override { return times_[c]; }
     std::size_t holdIndex(Time t) const override;
@@ -105,14 +112,21 @@ public:
     Logic scalar(std::size_t) const override { return Logic::X; }
     bool isUnknown(std::size_t change) const override;
     std::string text(std::size_t change, Radix radix) const override;
-    const lvd::wave::NumericIndex* numeric() const override { return nullptr; }
+    const lvd::wave::NumericIndex* numeric() const override { return analog_ ? &index_ : nullptr; }
+    /// The composed value of a change as bits, most significant first.
+    std::string bits(std::size_t change) const;
+    /// Number of bits of the composed value (Real and String members contribute none).
+    std::uint32_t width() const noexcept { return width_; }
 
 private:
-    std::string bitsAt(std::size_t change) const;
+    void buildIndex(bool isSigned);
 
-    const lvd::wave::WaveStore& store_;
     std::vector<lvd::wave::BusMember> members_;
+    std::vector<const lvd::wave::Signal*> signals_; ///< per member, nullptr when missing
     std::vector<Time> times_;
+    std::uint32_t width_ = 0;
+    bool analog_ = false;
+    lvd::wave::NumericIndex index_;
 };
 
 } // namespace lvd::gui

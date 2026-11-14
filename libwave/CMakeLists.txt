@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 add_library(lvdwave STATIC
-    src/version.cpp src/logic.cpp src/store.cpp src/fst_loader.cpp src/radix.cpp src/lod.cpp src/display_model.cpp src/display_edit.cpp src/live_reader.cpp src/wave_commands.cpp)
+    src/version.cpp src/logic.cpp src/store.cpp src/fst_loader.cpp src/radix.cpp src/lod.cpp src/display_model.cpp src/display_edit.cpp src/live_reader.cpp src/wave_commands.cpp src/search.cpp src/list_index.cpp src/expression.cpp src/wave_space.cpp src/compare.cpp src/memory.cpp)
 target_include_directories(lvdwave PUBLIC include)
 target_link_libraries(lvdwave PUBLIC lvd::fstapi)
 target_compile_features(lvdwave PUBLIC cxx_std_20)

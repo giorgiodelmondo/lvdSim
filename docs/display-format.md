@@ -21,11 +21,24 @@ signal "top.adc" radix=unsigned label="ADC value" analog=-1.5:3.25 linear signed
 ```
 
 - `group "label" expanded|collapsed` ... `end`
-- `signal "path" [radix=R] [label="text"] [analog=auto|MIN:MAX] [linear] [signed] [height=N]`
-- `bus "label" [radix=R] [analog...]` followed by `member "path"` lines (most significant first), then `end`
-- `divider "text"`
+- `signal "path" [radix=R] [label="text"] [analog=auto|MIN:MAX] [linear] [signed] [height=N] [heightpx=P]`
+- `bus "label" [radix=R] [analog...] [heightpx=P]` followed by `member "path"` lines (most significant first), then `end`
+- `divider "text" [heightpx=P]`
+- `height=N` is the height of an analog trace in lines of 22 pixels (default 4). `heightpx=P` is the row height in pixels of any
+  row (signal, bus, expression, compare, divider; 12 to 800, other values are brought into range); it wins over `height=N` and is
+  only written when the row has its own height. In the `.do` export it is `add wave -height P` (pixels, on every row kind).
 - Radix names: binary, octal, hex, unsigned, signed, ascii, default (aliases: bin, oct, decimal).
 - Strings use `\"` and `\` escapes. Errors report the line number.
+
+## Expression, compare and dataset rows
+- `expr "name" "expression" [radix=R] [color=#rrggbb] [analog...]`: an expression signal (syntax in expressions.md). The
+  expression is kept as text and evaluated against the waveforms when the layout is shown; one that does not compile is
+  shown as a row with its error.
+- `compare "label" "reference path" "test path" [tolerance=N] [color=#rrggbb]`: a compare row. `tolerance` is in units of the
+  waveform's time scale (femtoseconds for NVC), 0 by default.
+- A path may carry a dataset prefix, `ref:top.dut.q`, in `signal`, `member` and `compare` statements.
+- In the `.do` export: `add wave -label NAME -expr {EXPRESSION}`, `add wave -compare -label L [-tolerance N] REF TEST`, and
+  dataset paths as `ref:/top/dut/q`.
 
 ## Additions (bits, colours, sparse buses)
 - `signal "path" bits` shows one row per bit under a vector signal.
@@ -114,7 +127,13 @@ everything, nesting included.
 editor) and `drag N,N TARGET FRACTION` (holds a drag over a row so the drop indicator is visible).
 `--wave-context-menu NAME` also pops up the context menu on a row. Row names are the names the wave window shows.
 
-### Analog range
+### Analog range and virtual buses
+
+A virtual bus (`bus` line) can be drawn as an analog trace like a vector: its composed value (members most significant first) is read
+as an unsigned number, or two's complement with the `signed` radix or the `signed` option; a value with an X/U/Z bit has no value
+(nothing is drawn while it lasts), buses wider than 64 bits stay bus rows. `add wave -vbus NAME -format analog-step|analog-interpolated
+[-min A -max B] [-height P] members...` creates one, and the `.do` export writes these options for analog buses.
+
 
 `analog=auto` (default) or `analog=MIN:MAX` on `signal` and `bus` lines; in the `.do` export `-min V -max V` of `add wave`. Values are
 written with 17 significant digits and read back exactly; scientific notation (`2e-3`) is accepted everywhere. A manual range needs

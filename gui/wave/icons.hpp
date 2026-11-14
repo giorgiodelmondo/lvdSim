@@ -28,9 +28,19 @@ enum class Icon {
     StepDelta,
     StepTime,
     Follow,
+    AnyEdge,
+    RisingEdge,
+    FallingEdge,
+    FindValue,
+    ListWindow,
+    Continue, ///< resume a run stopped at a source line
+    StepInto,
+    StepOver,
+    StepOut,
+    Break, ///< interrupt the run in progress
 };
 
-inline constexpr int kIconCount = 18;
+inline constexpr int kIconCount = 28;
 
 /// One icon at a pixel size. `fg` is used for the outline shapes; Run, Stop and the cursor icons keep their
 /// own accent colour (green, red, amber) so they are recognised at a glance.

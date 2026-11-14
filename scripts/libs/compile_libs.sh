@@ -264,7 +264,7 @@ printf '%s' "$SUMMARY"
 echo "output: $OUT   (lvdsim.ini written; logs in $OUT/logs)"
 [ -s "$OUT/logs/failed.txt" ] && { cut -c1-200 "$OUT/logs/failed.txt"; echo "(full lists: $OUT/logs/failed.txt)"; }
 if want altera_verilog || want altera_lnsim; then
-    echo "Altera Verilog models: altera_mf_ver, lpm_ver and the altera_lnsim .sv part use constructs nvc does not analyse yet (docs/libraries.md)."
+    echo "Altera Verilog models: altera_mf_ver and lpm_ver compile and run; the altera_lnsim .sv part uses constructs nvc does not analyse yet (docs/libraries.md)."
 fi
 if want unisim_verilog || want xpm; then
     echo "Verilog designs also need glbl: vlog -work work \"$VLOG/glbl.v\" and 'vsim ... work.top work.glbl'."

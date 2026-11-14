@@ -18,7 +18,10 @@ namespace lvd::wave {
 using ItemId = std::uint64_t;
 ItemId nextItemId() noexcept;
 
-enum class ItemKind : std::uint8_t { Signal, Group, Divider, VirtualBus };
+/// Expression: a row computed from other signals (lvdwave/expression.hpp); `expr` holds the text and `label`
+/// the name. Compare: the differences between two signals (lvdwave/compare.hpp); `members` holds the
+/// reference and the test path, `tolerance` the time tolerance.
+enum class ItemKind : std::uint8_t { Signal, Group, Divider, VirtualBus, Expression, Compare };
 enum class Interpolation : std::uint8_t { Step, Linear };
 
 /// Oscilloscope style rendering of a numeric signal.
@@ -53,6 +56,25 @@ std::optional<AnalogRange> resolveAnalogRange(const AnalogSettings& settings,
 /// drawn on the nearest edge of the row. NaN gives 0.
 double analogFraction(const AnalogRange& range, double value) noexcept;
 
+struct DisplayItem;
+
+/// Row heights in pixels: the default of a row, and the limits of a height set by the user.
+inline constexpr int kDefaultRowHeightPx = 22;
+inline constexpr int kMinRowHeightPx = 12;
+inline constexpr int kMaxRowHeightPx = 800;
+
+/// A requested row height brought into [kMinRowHeightPx, kMaxRowHeightPx]; 0 or less stays 0 (the default).
+int clampRowHeight(int px) noexcept;
+
+/// The height a row is drawn with: the item's own height if set, else the default (analog traces:
+/// analog.heightRows times the default). `analogTrace` tells whether the row is drawn as an analog trace.
+int rowHeightPx(const DisplayItem& item, bool analogTrace) noexcept;
+
+/// True if the numeric (analog) view of a Logic row reads its bits as two's complement: the analog setting
+/// `signed`, or the signed radix. Signals and virtual buses follow the same rule, so a bus draws like the
+/// vector of the same bits.
+bool analogSigned(const DisplayItem& item) noexcept;
+
 /// One member of a virtual bus: a whole signal, or a single bit of it (bit counted from the least
 /// significant end, -1 for the whole signal).
 struct BusMember {
@@ -74,13 +96,19 @@ struct BusMember {
 struct DisplayItem {
     ItemId id = nextItemId(); ///< Stable identity, see ItemId.
     ItemKind kind = ItemKind::Signal;
-    std::string label;              ///< Display name; empty means use the path.
-    std::string path;               ///< Signal items.
-    std::vector<BusMember> members; ///< VirtualBus items: members, most significant first.
+    std::string label; ///< Display name; empty means use the path.
+    std::string path;  ///< Signal items.
+    std::vector<BusMember>
+        members;        ///< VirtualBus items: members, most significant first. Compare: ref, test.
+    std::string expr;   ///< Expression items: the expression text.
+    Time tolerance = 0; ///< Compare items: differences this short or shorter are ignored.
     Radix radix = Radix::Default;
     AnalogSettings analog;
-    bool expanded = true;               ///< Group items.
-    bool showBits = false;              ///< Signal items wider than one bit: show one row per bit.
+    bool expanded = true;  ///< Group items.
+    bool showBits = false; ///< Signal items wider than one bit: show one row per bit.
+    /// Height of the row in pixels; 0 is the default (kDefaultRowHeightPx, analog traces analog.heightRows
+    /// rows). Rows of single bits under an expanded vector keep the default height.
+    int heightPx = 0;
     std::optional<std::uint32_t> color; ///< 0xRRGGBB trace colour override.
     std::vector<DisplayItem> children;  ///< Group items.
 
@@ -105,6 +133,10 @@ public:
     static DisplayItem makeGroup(std::string label, bool expanded = true);
     static DisplayItem makeDivider(std::string label = {});
     static DisplayItem makeBus(std::string label, std::vector<BusMember> members, Radix radix = Radix::Hex);
+    static DisplayItem makeExpression(std::string label, std::string expr, Radix radix = Radix::Default);
+    /// A compare row of two prefixed dotted paths (reference, test); red by default.
+    static DisplayItem makeCompare(std::string label, std::string refPath, std::string testPath,
+                                   Time tolerance = 0);
 
     /// Rows in display order, skipping the children of collapsed groups. O(items).
     std::vector<DisplayRow> visibleRows() const;

@@ -30,6 +30,24 @@ SignalKind kindForVarType(unsigned char vt) {
     }
 }
 
+// FST "implicit" is what every producer writes when it has no direction, so it stays Unknown.
+PortDirection directionForVarDir(unsigned char vd) {
+    switch (vd) {
+        case FST_VD_INPUT:
+            return PortDirection::In;
+        case FST_VD_OUTPUT:
+            return PortDirection::Out;
+        case FST_VD_INOUT:
+            return PortDirection::InOut;
+        case FST_VD_BUFFER:
+            return PortDirection::Buffer;
+        case FST_VD_LINKAGE:
+            return PortDirection::Linkage;
+        default:
+            return PortDirection::Unknown;
+    }
+}
+
 void onValue(void* user, uint64_t time, fstHandle handle, const unsigned char* value) {
     auto* c = static_cast<Context*>(user);
     if (handle >= c->byHandle.size()) return;
@@ -94,12 +112,14 @@ Result<WaveStore> loadFst(const std::string& path) {
                 std::string name(v.name, v.name_length);
                 if (v.handle >= ctx.byHandle.size()) break;
                 const SignalId existing = ctx.byHandle[v.handle];
+                SignalId entry = kNoSignal;
                 if (existing != kNoSignal) {
-                    store.addAlias(current, std::move(name), existing);
+                    entry = store.addAlias(current, std::move(name), existing);
                 } else {
                     const SignalKind k = kindForVarType(v.typ);
-                    ctx.byHandle[v.handle] = store.addSignal(current, std::move(name), k, v.length);
+                    entry = ctx.byHandle[v.handle] = store.addSignal(current, std::move(name), k, v.length);
                 }
+                store.setDirection(entry, directionForVarDir(v.direction));
                 break;
             }
             default:

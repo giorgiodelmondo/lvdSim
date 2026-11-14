@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "app/processes_pane.hpp"
 
+#include <QContextMenuEvent>
 #include <QFileInfo>
 #include <QHeaderView>
+#include <QMenu>
 #include <QPushButton>
 #include <QSet>
 #include <QTableWidget>
@@ -51,6 +53,33 @@ ProcessesPane::ProcessesPane(QWidget* parent)
         const ProcessInfo p = processAt(row);
         emit openRequested(p.file, p.line);
     });
+}
+
+QMenu* ProcessesPane::createContextMenu(int row) {
+    auto* menu = new QMenu(this);
+    menu->setObjectName("processesContextMenu");
+    const ProcessInfo p = processAt(row);
+    QAction* view = menu->addAction(tr("View Source"));
+    view->setObjectName("viewSource");
+    view->setEnabled(!p.path.isEmpty());
+    view->setToolTip(p.path.isEmpty()   ? tr("Select a process")
+                     : p.file.isEmpty() ? tr("The source of this process is not known")
+                                        : QString());
+    connect(view, &QAction::triggered, this, [this, p] { emit openRequested(p.file, p.line); });
+    menu->addSeparator();
+    QAction* refresh = menu->addAction(tr("Refresh"));
+    connect(refresh, &QAction::triggered, this, &ProcessesPane::refreshRequested);
+    return menu;
+}
+
+void ProcessesPane::contextMenuEvent(QContextMenuEvent* e) {
+    const QPoint at = table_->viewport()->mapFromGlobal(e->globalPos());
+    const int row = table_->rowAt(at.y());
+    if (row >= 0)
+        table_->selectRow(row);
+    QMenu* menu = createContextMenu(row);
+    menu->exec(e->globalPos());
+    delete menu;
 }
 
 ProcessInfo ProcessesPane::processAt(int row) const {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // End to end: a real nvc simulation, driven through SimWindow, shown in the wave window.
 #include "app/breakpoint_pane.hpp"
+#include "app/console_input.hpp"
 #include "app/library_pane.hpp"
 #include "app/objects_pane.hpp"
 #include "app/processes_pane.hpp"
@@ -8,21 +9,27 @@
 #include "app/source_pane.hpp"
 #include "app/structure_pane.hpp"
 #include "app/transcript_widget.hpp"
+#include "wave/list_model.hpp"
+#include "wave/list_window.hpp"
 #include "wave/render_policy.hpp"
+#include "wave/signal_mime.hpp"
 #include "wave/wave_toolbar.hpp"
 #include "wave/wave_widget.hpp"
 
 #include <QAction>
-#include <QDir>
 #include <QActionGroup>
+#include <QDir>
 #include <QDockWidget>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QGuiApplication>
-#include <QSettings>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMimeData>
 #include <QPlainTextEdit>
+#include <QSettings>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QStatusBar>
@@ -56,6 +63,40 @@ begin
 end;
 )";
 
+// Ports of every mode, VHDL and Verilog. The last event is at 40 ns.
+const char* kPorts = R"(
+library ieee; use ieee.std_logic_1164.all;
+entity sub is
+  port (i : in std_logic; o : out std_logic; io : inout std_logic; b : buffer std_logic);
+end;
+architecture a of sub is
+  signal s : std_logic;
+begin
+  s <= i;
+  o <= s;
+  b <= not i;
+end;
+library ieee; use ieee.std_logic_1164.all;
+entity t is end;
+architecture a of t is
+  signal i : std_logic := '0';
+  signal o, io, b, vo : std_logic;
+  component vsub is port (vi : in std_logic; vout : out std_logic); end component;
+begin
+  u : entity work.sub port map (i, o, io, b);
+  vl : vsub port map (i, vo);
+  i <= '1' after 10 ns, '0' after 40 ns;
+end;
+)";
+
+const char* kPortsVerilog = R"(
+module vsub(input vi, output vout);
+  wire w;
+  assign w = vi;
+  assign vout = w;
+endmodule
+)";
+
 QString envOr(const char* name, const QString& fallback) {
     const QByteArray v = qgetenv(name);
     return v.isEmpty() ? fallback : QString::fromLocal8Bit(v);
@@ -87,12 +128,14 @@ struct Design {
     QTemporaryDir dir;
     Nvc nvc = findNvc();
     QString previousCwd = QDir::currentPath();
+    const char* vhdl = kCounter;
+    const char* verilog = nullptr; // analysed first when set
 
     bool prepare() {
         if (!nvc.found || !dir.isValid())
             return false;
         QDir::setCurrent(dir.path());
-        std::ofstream("t.vhd") << kCounter;
+        std::ofstream("t.vhd") << vhdl;
         QDir().mkpath("work");
         std::ofstream("work/_NVC_LIB") << "lvdsim\n";
 
@@ -100,9 +143,14 @@ struct Design {
         po.capture = true;
         if (!nvc.dllDir.isEmpty())
             po.pathPrepend.push_back(nvc.dllDir.toStdString());
-        const auto r = lvd::tools::runProcess({nvc.exe.toStdString(), "-L", nvc.libDir.toStdString(),
-                                               "--std=08", "--work=work:work", "-a", "t.vhd"},
-                                              po);
+        std::vector<std::string> args = {nvc.exe.toStdString(), "-L", nvc.libDir.toStdString(), "--std=08",
+                                         "--work=work:work",    "-a"};
+        if (verilog != nullptr) {
+            std::ofstream("v.v") << verilog;
+            args.push_back("v.v");
+        }
+        args.push_back("t.vhd");
+        const auto r = lvd::tools::runProcess(args, po);
         return r.started && r.exitCode == 0;
     }
     ~Design() { QDir::setCurrent(previousCwd); }
@@ -190,6 +238,50 @@ private slots:
         QVERIFY(w.wave()->view().endTime() >= 100000000.0 - 1.0);
     }
 
+    void droppingSignalsFromObjectsOnTheLiveWaveWindow() {
+        Design d;
+        PREPARE(d);
+        SimWindow w(d.environment());
+        w.setDialogsEnabled(false);
+        QVERIFY(w.startSimulation({"-do", "run 100 ns", "work.t"}));
+        QVERIFY(w.waitUntilIdle());
+        QCOMPARE(w.wave()->rowCount(), 0); // nothing added yet: the stream has the whole design
+        QCOMPARE(w.objects()->signalCount(), 2);
+
+        // select clk and cnt in the Objects pane, drag them onto the wave window
+        QTreeWidget* tree = w.objects()->tree();
+        std::function<void(QTreeWidgetItem*)> selectAll = [&](QTreeWidgetItem* it) {
+            if (it->childCount() == 0)
+                it->setSelected(true);
+            for (int i = 0; i < it->childCount(); ++i)
+                selectAll(it->child(i));
+        };
+        selectAll(tree->invisibleRootItem());
+        const std::unique_ptr<QMimeData> mime(w.objects()->mimeDataForSelection());
+        QVERIFY(mime != nullptr);
+        QCOMPARE(signalPathsFromMime(mime.get()).size(), 2);
+
+        WaveWidget* wave = w.wave();
+        const QPoint p(80, wave->rowsTop() + 30);
+        QDragEnterEvent enter(p, Qt::CopyAction, mime.get(), Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(wave, &enter);
+        QVERIFY(enter.isAccepted());
+        QDropEvent drop(QPointF(p), Qt::CopyAction, mime.get(), Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(wave, &drop);
+        QVERIFY(drop.isAccepted());
+        QCOMPARE(wave->rowCount(), 2);
+        QVERIFY(rowNamed(w, "t.clk") >= 0);
+        QVERIFY(rowNamed(w, "t.cnt") >= 0);
+        // the live data is there at once: the values come from the stream
+        wave->setCursorTime(0, 100000000.0);
+        QCOMPARE(QString::fromStdString(wave->rowValueText(rowNamed(w, "t.cnt"))), QString("0000000A"));
+        // the same rows land in the .do export
+        const QString script = QString::fromStdString(wave->doScript());
+        QVERIFY(script.contains("add wave /t/clk"));
+        QVERIFY(wave->undo());
+        QCOMPARE(wave->rowCount(), 0);
+    }
+
     void runningMoreExtendsTheWaves() {
         Design d;
         PREPARE(d);
@@ -238,17 +330,18 @@ private slots:
         QCOMPARE(w.store()->endTime(), Time{50000000});
         WaveWidget* wave = w.wave();
 
-        wave->zoomBy(4.0);  // a window of a quarter of the run: the width Follow keeps
+        wave->zoomBy(4.0); // a window of a quarter of the run: the width Follow keeps
         const double tpp = wave->view().timePerPixel;
         QVERIFY(w.applyWaveOp("follow on"));
         QVERIFY(wave->follow());
         QVERIFY(w.waveToolBar()->followAction()->isChecked());
         for (int i = 1; i <= 3; ++i) {
-            w.sendCommand("run 40 ns");  // the live stream grows; the 60 ms poll updates the view
+            w.sendCommand("run 40 ns"); // the live stream grows; the 60 ms poll updates the view
             QVERIFY(w.waitUntilIdle());
             const double end = static_cast<double>(w.store()->endTime());
             QCOMPARE(end, 50000000.0 + 40000000.0 * i);
-            QVERIFY2(qAbs(wave->view().endTime() - end) <= tpp * 2, qPrintable(QString::number(wave->view().endTime())));
+            QVERIFY2(qAbs(wave->view().endTime() - end) <= tpp * 2,
+                     qPrintable(QString::number(wave->view().endTime())));
             QCOMPARE(wave->view().timePerPixel, tpp);
         }
 
@@ -290,9 +383,9 @@ private slots:
         QCOMPARE(QSettings(ini, QSettings::IniFormat).value("wave/follow").toBool(), true);
         {
             SimWindow w(env, ini);
-            QVERIFY(w.wave()->follow());  // restored
+            QVERIFY(w.wave()->follow()); // restored
             QVERIFY(w.waveToolBar()->followAction()->isChecked());
-            w.wave()->setView(0.0, 1.0);  // a manual change turns it off and the setting follows
+            w.wave()->setView(0.0, 1.0); // a manual change turns it off and the setting follows
             QVERIFY(!w.wave()->follow());
         }
         QCOMPARE(QSettings(ini, QSettings::IniFormat).value("wave/follow").toBool(), false);
@@ -331,6 +424,66 @@ private slots:
         w.sendCommand("delete wave *");
         QVERIFY(w.waitUntilIdle());
         QCOMPARE(w.wave()->rowCount(), 0);
+    }
+
+    void expressionsDatasetsAndCompareFromTheShell() {
+        Design d;
+        PREPARE(d);
+        // a finished run of the same design as the reference dataset
+        {
+            lvd::tools::ProcessOptions po;
+            po.capture = true;
+            if (!d.nvc.dllDir.isEmpty())
+                po.pathPrepend.push_back(d.nvc.dllDir.toStdString());
+            const auto r = lvd::tools::runProcess({d.nvc.exe.toStdString(), "-L", d.nvc.libDir.toStdString(),
+                                                   "--std=08", "--work=work:work", "-e", "t", "-r",
+                                                   "--stop-time=200ns", "--wave=ref.fst"},
+                                                  po);
+            QVERIFY2(r.started && r.exitCode == 0, r.output.c_str());
+        }
+        SimWindow w(d.environment());
+        w.setDialogsEnabled(false);
+        QVERIFY(w.startSimulation({"-do", "run 100 ns", "work.t"}));
+        QVERIFY(w.waitUntilIdle());
+
+        w.sendCommand("add wave -expr {cnt > 3} -label big");
+        QVERIFY(w.waitUntilIdle());
+        const int big = rowNamed(w, "big");
+        QVERIFY(big >= 0);
+        QVERIFY(w.wave()->rowHasSource(big));
+        const std::size_t before = w.wave()->rowSignal(big)->changeCount();
+        w.sendCommand("add wave -expr {cnt and} -label bad");
+        QVERIFY(w.waitUntilIdle());
+        QVERIFY(w.transcript()->text().contains("** add wave -expr: col"));
+        QCOMPARE(rowNamed(w, "bad"), -1);
+
+        // the expression row follows the run (cnt passes 3 at 35 ns; the value is then held)
+        w.sendCommand("run 50 ns");
+        QVERIFY(w.waitUntilIdle());
+        QCOMPARE(w.wave()->rowSignal(big)->changeCount(), before);
+        w.wave()->setCursorTime(0, 140e6);
+        QCOMPARE(w.wave()->rowValueText(big), std::string("1"));
+
+        QVERIFY(w.openDataset("ref.fst"));
+        QCOMPARE(w.wave()->datasetNames(), QStringList{"ref"});
+        QVERIFY(!w.openDataset("ref.fst")); // the name is taken
+        QVERIFY(w.lastError().contains("already open"));
+
+        w.sendCommand("add wave ref:/t/cnt");
+        w.sendCommand("add wave -compare -label same ref:/t/cnt /t/cnt");
+        QVERIFY(w.waitUntilIdle());
+        QVERIFY(w.wave()->rowHasSource(rowNamed(w, "ref:t.cnt")));
+        QVERIFY(w.wave()->rowHasSource(rowNamed(w, "same")));
+        QCOMPARE(w.wave()->differenceCount(), std::size_t{0}); // the same design: no difference
+        QVERIFY(!w.applyWaveOp("difference next"));
+
+        w.sendCommand("add list -expr {cnt > 3} -label big");
+        QVERIFY(w.waitUntilIdle());
+        QCOMPARE(w.list()->model()->headerText(1), QString("big"));
+        QVERIFY(w.list()->model()->rowCount() > 0);
+
+        QVERIFY(w.closeDataset("ref"));
+        QVERIFY(!w.wave()->rowHasSource(rowNamed(w, "same")));
     }
 
     void doubleClickingAnObjectAddsIt() {
@@ -428,12 +581,12 @@ private slots:
     void typedCommandsGoToTheShell() {
         Design d;
         PREPARE(d);
-        SimWindow w(d.environment());
+        SimWindow w(d.environment(), d.dir.path() + "/session.ini"); // typed commands go into the history
         w.setDialogsEnabled(false);
         QVERIFY(w.startSimulation({"work.t"}));
         QVERIFY(w.waitUntilIdle());
 
-        auto* edit = w.transcript()->findChild<QLineEdit*>();
+        auto* edit = w.transcript()->input();
         QTest::keyClicks(edit, "run 10 ns");
         QTest::keyClick(edit, Qt::Key_Return);
         QVERIFY(w.waitUntilIdle());
@@ -873,17 +1026,21 @@ private slots:
         SimWindow w(lvd::tools::discoverEnvironment(), dir.filePath("fresh.ini"));
         w.resize(1400, 800);
         w.show();
-        w.settleLayout(); // what the headless screenshot path does: no event loop, still one tab bar per group
+        w.settleLayout(); // what the headless screenshot path does: no event loop, still one tab bar per
+                          // group
         QList<QTabBar*> bars;
         for (QTabBar* b : w.findChildren<QTabBar*>(QString(), Qt::FindDirectChildrenOnly))
-            if (b->isVisible() && b->count() > 0) bars.push_back(b);
+            if (b->isVisible() && b->count() > 0)
+                bars.push_back(b);
         QCOMPARE(bars.size(), 2); // Library/Objects/Sim and Processes/Breakpoints
         const QRect status = w.statusBar()->geometry();
         const QRect inside = QRect(QPoint(0, 0), w.size()).adjusted(0, 0, 0, -status.height());
         for (QTabBar* b : bars) {
             const QRect g = b->geometry();
-            QVERIFY2(inside.contains(g), qPrintable(QString("tab bar %1 outside the dock region").arg(b->tabText(0))));
-            QVERIFY2(!g.intersects(status), qPrintable(QString("tab bar %1 over the status bar").arg(b->tabText(0))));
+            QVERIFY2(inside.contains(g),
+                     qPrintable(QString("tab bar %1 outside the dock region").arg(b->tabText(0))));
+            QVERIFY2(!g.intersects(status),
+                     qPrintable(QString("tab bar %1 over the status bar").arg(b->tabText(0))));
             // The tab bar must sit directly under a visible dock widget of its own group.
             bool owned = false;
             for (QDockWidget* dock : w.findChildren<QDockWidget*>())
@@ -905,7 +1062,8 @@ private slots:
             QVERIFY2(!a->icon().isNull(), name);
             QVERIFY2(!a->toolTip().isEmpty(), name);
         }
-        for (QToolBar* bar : w.findChildren<QToolBar*>())
+        // The window's tool bars; the small tool bars inside docks (Project, Regression) use text.
+        for (QToolBar* bar : w.findChildren<QToolBar*>(QString(), Qt::FindDirectChildrenOnly))
             QCOMPARE(bar->toolButtonStyle(), Qt::ToolButtonIconOnly);
     }
 
@@ -947,8 +1105,9 @@ private slots:
         QVERIFY(w.tabifiedDockWidgets(obj).isEmpty());
         QTabBar* bar = tabBarWith(w, "Library");
         QVERIFY(bar != nullptr);
-        QCOMPARE(bar->count(), 2);
+        QCOMPARE(bar->count(), 3); // Library | Sim | Project
         QVERIFY(tabBarWith(w, "Sim") == bar);
+        QVERIFY(tabBarWith(w, "Project") == bar);
         // all three are shown (the hidden tab is the one behind), in one column, Objects below the tabs
         QVERIFY(!obj->isHidden() && !lib->isHidden() && !sim->isHidden());
         QVERIFY(obj->isVisible());
@@ -1025,7 +1184,7 @@ private slots:
                     .contains(w2.findChild<QDockWidget*>("structureDock")));
     }
 
-    void libraryDoubleClickOnlyExpands() {
+    void libraryDoubleClickNeverSimulates() {
         QTemporaryDir tmp;
         SimWindow w(lvd::tools::discoverEnvironment(), tmp.filePath("dbl.ini"));
         w.setDialogsEnabled(false);
@@ -1035,13 +1194,15 @@ private slots:
         w.library()->setLibraries({work});
         QSignalSpy started(&w, &SimWindow::simulationStarted);
         QSignalSpy requested(w.library(), &LibraryPane::simulateRequested);
+        QSignalSpy viewed(w.library(), &LibraryPane::viewSourceRequested);
+        w.library()->setSourceGate({}); // whether an nvc was found does not matter here
         w.show();
         QVERIFY(QTest::qWaitForWindowExposed(&w));
         QTreeWidget* tree = w.library()->tree();
         QTreeWidgetItem* lib = tree->topLevelItem(0);
         QTreeWidgetItem* unit = lib->child(0);
 
-        // a real double click on the unit row expands it (it has an architecture) and starts nothing
+        // a real double click on the unit row asks for its source (here unknown: a note) and starts nothing
         QVERIFY(!unit->isExpanded());
         const QPoint at = tree->visualItemRect(unit).center();
         // a double click is press, release, double-click event, release
@@ -1051,9 +1212,10 @@ private slots:
             QTest::mouseDClick(vp, Qt::LeftButton, Qt::NoModifier, p);
         };
         doubleClick(at);
-        QVERIFY(unit->isExpanded());
-        doubleClick(at);
-        QVERIFY(!unit->isExpanded());
+        QCOMPARE(viewed.count(), 1);
+        QCOMPARE(viewed.at(0).at(0).toString(), QString("work.counter"));
+        QVERIFY(!unit->isExpanded()); // the arrow expands it
+        QVERIFY(w.transcript()->text().contains("View Source"));
 
         // the library row collapses and expands (it starts expanded)
         QVERIFY(lib->isExpanded());
@@ -1183,6 +1345,74 @@ private slots:
         QVERIFY(!w.applyWaveOp("rename Pair \" \"")); // an empty group name is refused
         QCOMPARE(rejected.count(), 1);
         QVERIFY(w.statusBar()->currentMessage().contains("group"));
+    }
+
+    void objectsShowThePortModesTheKernelStreams() {
+        Design d;
+        d.vhdl = kPorts;
+        d.verilog = kPortsVerilog;
+        PREPARE(d);
+        SimWindow w(d.environment());
+        w.setDialogsEnabled(false);
+        QVERIFY(w.startSimulation({"-do", "run 10 ns", "work.t"}));
+        QVERIFY(w.waitUntilIdle());
+
+        // no describe request: the modes arrive with the signal definitions of the live stream
+        const ObjectsPane* o = w.objects();
+        QCOMPARE(o->portModeOf("t.i"), PortMode::Internal);
+        QCOMPARE(o->portModeOf("t.u.i"), PortMode::In); // collapsed into t.i, still an input of u
+        QCOMPARE(o->portModeOf("t.u.o"), PortMode::Out);
+        QCOMPARE(o->portModeOf("t.u.io"), PortMode::InOut);
+        QCOMPARE(o->portModeOf("t.u.b"), PortMode::Buffer);
+        QCOMPARE(o->portModeOf("t.u.s"), PortMode::Internal);
+        QCOMPARE(o->portModeOf("t.vl.vi"), PortMode::In); // Verilog ports
+        QCOMPARE(o->portModeOf("t.vl.vout"), PortMode::Out);
+        QCOMPARE(o->portModeOf("t.vl.w"), PortMode::Internal);
+
+        // and the rows of the tree carry them
+        int checked = 0;
+        std::function<void(QTreeWidgetItem*)> walk = [&](QTreeWidgetItem* it) {
+            const QString path = it->data(0, Qt::UserRole).toString();
+            if (path == "t.u.b") {
+                QVERIFY(it->toolTip(0).contains("buffer port"));
+                ++checked;
+            } else if (path == "t.vl.vout") {
+                QVERIFY(it->toolTip(0).contains("output port"));
+                ++checked;
+            }
+            for (int i = 0; i < it->childCount(); ++i)
+                walk(it->child(i));
+        };
+        walk(o->tree()->invisibleRootItem());
+        QCOMPARE(checked, 2);
+        // nothing was asked behind the user's back for the modes: the only describe is the probe at the first
+        // prompt, which learns whether the kernel reports source locations (View Declaration)
+        const QString text = w.transcript()->text();
+        QCOMPARE(text.count("describe"), text.count("describe -json -location {/}"));
+        QVERIFY(text.count("describe") <= 1);
+    }
+
+    void theDataEndsWhereTheRunEndedNotAtTheLastEvent() {
+        Design d;
+        d.vhdl = kPorts;
+        d.verilog = kPortsVerilog;
+        PREPARE(d);
+        SimWindow w(d.environment());
+        w.setDialogsEnabled(false);
+        QVERIFY(w.startSimulation({"-do", "add wave /i; run 100 ns", "work.t"}));
+        QVERIFY(w.waitUntilIdle());
+
+        // the last value change is at 40 ns, the run went on to 100 ns
+        const Signal& i = w.store()->signal(w.store()->findSignal("t.i"));
+        QCOMPARE(i.time(i.changeCount() - 1), Time{40000000});
+        QCOMPARE(w.store()->endTime(), Time{100000000});
+        QVERIFY(w.wave()->autoFit());
+        QVERIFY(w.wave()->view().endTime() >= 100000000.0 - 1.0);
+
+        // the next run continues from 100 ns, not from the last event
+        w.sendCommand("run 100 ns");
+        QVERIFY(w.waitUntilIdle());
+        QCOMPARE(w.store()->endTime(), Time{200000000});
     }
 };
 

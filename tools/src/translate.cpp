@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "translate.hpp"
 
+#include "coverage.hpp"
+
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
+#include <string>
 
 namespace lvd::tools {
 
@@ -40,8 +44,12 @@ std::vector<std::string> splitOn(const std::string& s, char sep) {
 // ---------------------------------------------------------------------------------------------
 // Option parsing
 
+/// nargs value of an option whose value is joined to its name, as in -gWIDTH=8. The name must end in '*';
+/// the option is recorded under the name without the '*' with the rest of the word as its value.
+constexpr int kJoined = -1;
+
 /// A known option. handled=false options are accepted and have no effect on nvc. A name ending in '*'
-/// matches any option with that prefix (for example "-voptargs=*").
+/// matches any option with that prefix (for example "-voptargs=*"); exact names are tried first.
 struct OptSpec {
     const char* name;
     int nargs;
@@ -87,14 +95,13 @@ bool isStdOption(const std::string& a) {
 }
 
 const OptSpec* findSpec(const std::vector<OptSpec>& specs, const std::string& a) {
+    for (const OptSpec& s : specs)
+        if (a == s.name)
+            return &s;
     for (const OptSpec& s : specs) {
         const std::string n = s.name;
-        if (!n.empty() && n.back() == '*') {
-            if (startsWith(a, n.substr(0, n.size() - 1)))
-                return &s;
-        } else if (a == n) {
+        if (!n.empty() && n.back() == '*' && startsWith(a, n.substr(0, n.size() - 1)))
             return &s;
-        }
     }
     return nullptr;
 }
@@ -115,7 +122,8 @@ Parsed parseArgs(const std::vector<std::string>& in, const std::vector<OptSpec>&
     for (std::size_t i = 0; i < in.size() && plan.error.empty(); ++i) {
         const std::string& a = in[i];
 
-        if (a.size() > 1 && a[0] == '+') {
+        const bool plus = a.size() > 1 && a[0] == '+';
+        if (plus && findSpec(specs, a) == nullptr) { // '+' options of the table go through the code below
             if (startsWith(a, "+define+"))
                 out.options.push_back({"+define", splitOn(a.substr(8), '+')});
             else if (startsWith(a, "+incdir+"))
@@ -126,7 +134,7 @@ Parsed parseArgs(const std::vector<std::string>& in, const std::vector<OptSpec>&
             continue;
         }
 
-        if (!looksLikeOption(a) && !isStdOption(a)) {
+        if (!plus && !looksLikeOption(a) && !isStdOption(a)) {
             out.positional.push_back(a);
             continue;
         }
@@ -152,7 +160,11 @@ Parsed parseArgs(const std::vector<std::string>& in, const std::vector<OptSpec>&
 
         Option opt;
         opt.name = hasInline ? a.substr(0, a.find('=')) : a;
-        if (hasInline) {
+        if (spec->nargs == kJoined) {
+            const std::string prefix(spec->name, std::char_traits<char>::length(spec->name) - 1);
+            opt.name = prefix;
+            opt.values.push_back(a.substr(prefix.size()));
+        } else if (hasInline) {
             opt.values.push_back(inlineValue);
         } else {
             for (int k = 0; k < spec->nargs; ++k) {
@@ -175,6 +187,20 @@ bool takeStrict(std::vector<std::string>& args) {
     const bool found = it != args.end();
     args.erase(it, args.end());
     return found;
+}
+
+// +cover and +cover=<letters> of vcom and vlog. nvc chooses what to collect when the design is elaborated,
+// not when it is compiled, so nothing is recorded here; the note says where the choice is made instead.
+void noteCompileCoverage(const Parsed& p, Plan& plan) {
+    if (!p.has("+cover") && !p.has("+cover="))
+        return;
+    const std::vector<std::string> letters = p.allValues("+cover=");
+    std::string hint = "vsim -coverage";
+    if (!letters.empty() && !letters.back().empty())
+        hint += " -lvdcover " + letters.back();
+    plan.message += "** Note: (lvdsim) +cover is accepted, but nvc selects coverage when the design is "
+                    "elaborated, not when it is compiled; nothing is recorded now. Use: " +
+                    hint + '\n';
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -214,6 +240,136 @@ std::string pickStandard(const Parsed& p, const Context& ctx, Plan& plan) {
             std = "19";
     }
     return std;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Generic overrides (vsim -g / -G)
+
+// A VHDL based literal such as 16#FF# or 2#1010_0101# (optionally negative) as a decimal string; nullopt if
+// the text is not one. nvc parses only decimal integers for an overridden generic.
+std::optional<std::string> basedToDecimal(const std::string& text) {
+    std::string t = text;
+    const bool negative = !t.empty() && t[0] == '-';
+    if (negative)
+        t.erase(0, 1);
+    const std::size_t h1 = t.find('#');
+    if (h1 == std::string::npos || h1 == 0 || t.back() != '#' || t.size() < h1 + 3)
+        return std::nullopt;
+    const std::string baseText = t.substr(0, h1);
+    if (baseText.size() > 2 ||
+        !std::all_of(baseText.begin(), baseText.end(), [](unsigned char c) { return std::isdigit(c) != 0; }))
+        return std::nullopt;
+    const int base = std::stoi(baseText);
+    if (base < 2 || base > 16)
+        return std::nullopt;
+    unsigned long long sum = 0;
+    int digits = 0;
+    for (std::size_t i = h1 + 1; i + 1 < t.size(); ++i) {
+        const char c = t[i];
+        if (c == '_')
+            continue;
+        int d = -1;
+        if (c >= '0' && c <= '9')
+            d = c - '0';
+        else if (std::isxdigit(static_cast<unsigned char>(c)))
+            d = 10 + std::tolower(static_cast<unsigned char>(c)) - 'a';
+        if (d < 0 || d >= base)
+            return std::nullopt;
+        if (sum > (static_cast<unsigned long long>(INT64_MAX) - static_cast<unsigned long long>(d)) /
+                      static_cast<unsigned long long>(base))
+            return std::nullopt; // too large for a VHDL integer; let nvc report it
+        sum = sum * static_cast<unsigned long long>(base) + static_cast<unsigned long long>(d);
+        ++digits;
+    }
+    if (digits == 0)
+        return std::nullopt;
+    return (negative ? "-" : "") + std::to_string(sum);
+}
+
+// The value as nvc expects it: surrounding double quotes removed (a doubled quote inside stands for one),
+// based integers converted to decimal. Everything else (integers, reals, enumeration literals, x"..") is
+// passed as is.
+std::string genericValue(const std::string& v) {
+    if (v.size() >= 2 && v.front() == '"' && v.back() == '"') {
+        std::string out;
+        for (std::size_t i = 1; i + 1 < v.size(); ++i) {
+            out += v[i];
+            if (v[i] == '"' && i + 2 < v.size() && v[i + 1] == '"')
+                ++i;
+        }
+        return out;
+    }
+    if (const auto d = basedToDecimal(v))
+        return *d;
+    return v;
+}
+
+struct GenericOverride {
+    std::string name; ///< as nvc wants it: GENERIC or inst.inst.GENERIC (labels below the top level)
+    std::string value;
+    bool all = false;  ///< came from -G
+    bool path = false; ///< named with a path (also /top/NAME): that instance only
+};
+
+// The nvc option for one override. A name without a path applies to every instance: -G replaces
+// generic map values (-g with the pattern *.NAME), -g only sets generics that have no value in a
+// generic map (--generic-default). Both include the top level.
+std::string nvcGenericArg(const GenericOverride& g) {
+    if (g.path)
+        return "-g" + g.name + "=" + g.value;
+    else if (g.all)
+        return "-g*." + g.name + "=" + g.value;
+    else
+        return "--generic-default=*." + g.name + "=" + g.value;
+}
+
+// "NAME=VALUE", "/top/inst/NAME=VALUE" or "inst/NAME=VALUE" in nvc form. Sets *error on failure.
+std::optional<GenericOverride> parseGeneric(const std::string& opt, const std::string& text,
+                                            const std::vector<DesignUnitName>& tops, std::string* error) {
+    const std::size_t eq = text.find('=');
+    if (eq == std::string::npos || eq == 0 || eq + 1 == text.size()) {
+        *error = "invalid generic '" + opt + text + "'; use " + opt + "<name>=<value>";
+        return std::nullopt;
+    }
+    std::string name = text.substr(0, eq);
+    const bool path = name.find_first_of("/.") != std::string::npos;
+    // MSYS shells (Git Bash, make under MSYS2) turn "-g/tb/u/W=1" into "-gC:/Program Files/Git/tb/u/W=1".
+    const bool drive = name.size() > 2 && std::isalpha(static_cast<unsigned char>(name[0])) != 0 &&
+                       name[1] == ':' && (name[2] == '/' || name[2] == '\\');
+    if (drive) {
+        *error = "generic name '" + name +
+                 "' looks like a path converted by an MSYS shell; set MSYS_NO_PATHCONV=1 " +
+                 "or use the dotted form " + opt + "inst.NAME=VALUE";
+        return std::nullopt;
+    }
+    if (name.find('/') != std::string::npos) {
+        const bool absolute = name.front() == '/';
+        std::vector<std::string> parts = splitOn(name, '/');
+        if (absolute && !parts.empty()) {
+            const std::string root = lower(parts.front());
+            const bool isTop = std::any_of(tops.begin(), tops.end(),
+                                           [&](const DesignUnitName& u) { return lower(u.unit) == root; });
+            if (!isTop) {
+                *error = "generic path '" + name + "' does not start at a top-level unit ('/" +
+                         tops.front().unit + "/...')";
+                return std::nullopt;
+            }
+            parts.erase(parts.begin());
+        }
+        if (parts.empty()) {
+            *error = "invalid generic name '" + name + "'";
+            return std::nullopt;
+        }
+        name.clear();
+        for (const std::string& p : parts)
+            name += (name.empty() ? "" : ".") + p;
+    }
+    GenericOverride g;
+    g.name = name;
+    g.value = genericValue(text.substr(eq + 1));
+    g.all = opt == "-G";
+    g.path = path;
+    return g;
 }
 
 } // namespace
@@ -372,6 +528,7 @@ Plan planVcom(std::vector<std::string> args, const Context& ctx) {
         {"-O2", 0, false},       {"-O3", 0, false},
         {"-O4", 0, false},       {"-O5", 0, false},
         {"-nologo", 0, false},   {"-noaccel", 1, false},
+        {"+cover", 0, true},     {"+cover=*", kJoined, true}, // +cover=sbt
     };
     const Parsed p = parseArgs(args, specs, ctx, strict, plan);
     if (!plan.ok())
@@ -380,6 +537,7 @@ Plan planVcom(std::vector<std::string> args, const Context& ctx) {
         plan.error = "no VHDL source files given";
         return plan;
     }
+    noteCompileCoverage(p, plan);
 
     NvcCall call;
     call.args = ctx.nvcGlobalArgs;
@@ -387,7 +545,8 @@ Plan planVcom(std::vector<std::string> args, const Context& ctx) {
     if (!addLibraryArgs(p.value("-work", "work"), p.allValues("-L"), ctx, plan, call.args))
         return plan;
     call.args.push_back("-a");
-    // -explicit: ambiguous operators resolve in favour of the explicitly declared one, which is what nvc does with --relaxed.
+    // -explicit: ambiguous operators resolve in favour of the explicitly declared one, which is what nvc does
+    // with --relaxed.
     if (p.has("-explicit"))
         call.args.push_back("--relaxed");
     call.args.insert(call.args.end(), p.positional.begin(), p.positional.end());
@@ -406,13 +565,29 @@ Plan planVlog(std::vector<std::string> args, const Context& ctx) {
     }
 
     const std::vector<OptSpec> specs = {
-        {"-work", 1, true},       {"-L", 1, true},         {"-sv", 0, true},
-        {"-quiet", 0, false},     {"-novopt", 0, false},   {"-incr", 0, false},
-        {"-mfcu", 0, false},      {"-lint", 0, false},     {"-pedanticerrors", 0, false},
-        {"-timescale", 1, false}, {"-suppress", 1, false}, {"-nowarn", 1, false},
-        {"-vopt", 0, false},      {"-nologo", 0, false},   {"-v2k5", 0, false},
-        {"-O0", 0, false},        {"-O1", 0, false},       {"-O2", 0, false},
-        {"-O3", 0, false},        {"-O4", 0, false},       {"-O5", 0, false},
+        {"-work", 1, true},
+        {"-L", 1, true},
+        {"-sv", 0, true},
+        {"-quiet", 0, false},
+        {"-novopt", 0, false},
+        {"-incr", 0, false},
+        {"-mfcu", 0, false},
+        {"-lint", 0, false},
+        {"-pedanticerrors", 0, false},
+        {"-timescale", 1, false},
+        {"-suppress", 1, false},
+        {"-nowarn", 1, false},
+        {"-vopt", 0, false},
+        {"-nologo", 0, false},
+        {"-v2k5", 0, false},
+        {"-O0", 0, false},
+        {"-O1", 0, false},
+        {"-O2", 0, false},
+        {"-O3", 0, false},
+        {"-O4", 0, false},
+        {"-O5", 0, false},
+        {"+cover", 0, true},
+        {"+cover=*", kJoined, true},
     };
     const Parsed p = parseArgs(args, specs, ctx, strict, plan);
     if (!plan.ok())
@@ -421,6 +596,7 @@ Plan planVlog(std::vector<std::string> args, const Context& ctx) {
         plan.error = "no Verilog source files given";
         return plan;
     }
+    noteCompileCoverage(p, plan);
 
     NvcCall call;
     call.args = ctx.nvcGlobalArgs;
@@ -455,9 +631,14 @@ Plan planVsim(std::vector<std::string> args, const Context& ctx) {
         {"-L", 1, true},
         {"-g", 1, true},
         {"-G", 1, true},
+        {"-g*", kJoined, true}, // -gNAME=VALUE, -g/top/inst/NAME=VALUE
+        {"-G*", kJoined, true},
         {"-wlf", 1, true},
         {"-lvdwave", 1, true},
         {"-lvdlive", 1, true},
+        {"-lvdarrays", 0, true},
+        {"-lvdcover", 1, true},
+        {"-lvdcoverfile", 1, true},
         {"-l", 1, true},
         {"-sdfmin", 1, true},
         {"-sdftyp", 1, true},
@@ -473,7 +654,7 @@ Plan planVsim(std::vector<std::string> args, const Context& ctx) {
         {"-msgmode", 1, false},
         {"-title", 1, false},
         {"-onfinish", 1, false},
-        {"-coverage", 0, false},
+        {"-coverage", 0, true},
         {"-assertdebug", 0, false},
         {"-nolog", 0, false},
         {"-wlfdeleteonquit", 0, false},
@@ -485,7 +666,7 @@ Plan planVsim(std::vector<std::string> args, const Context& ctx) {
     if (!plan.ok())
         return plan;
 
-    for (const char* n : {"-sdfmin", "-sdftyp", "-sdfmax", "-pli", "-foreign"})
+    for (const char* n : {"-pli", "-foreign"})
         if (p.has(n))
             unsupported(std::string("option '") + n + "'", ctx, strict, plan);
     if (p.has("-l"))
@@ -500,8 +681,8 @@ Plan planVsim(std::vector<std::string> args, const Context& ctx) {
     const bool batch = p.has("-c") || p.has("-batch");
     const bool gui = !batch;
 
-    // Several design units are elaborated together as top levels, e.g. `vsim work.top work.glbl`. NVC elaborates
-    // all of them from the work library, so every unit must come from the same library.
+    // Several design units are elaborated together as top levels, e.g. `vsim work.top work.glbl`. NVC
+    // elaborates all of them from the work library, so every unit must come from the same library.
     std::vector<DesignUnitName> units;
     for (const std::string& text : p.positional) {
         const DesignUnitName u = parseDesignUnit(text);
@@ -530,15 +711,64 @@ Plan planVsim(std::vector<std::string> args, const Context& ctx) {
     if (!addLibraryArgs(lib, p.allValues("-L"), ctx, plan, call.args))
         return plan;
 
-    call.args.push_back("-e");
-    for (const char* opt : {"-g", "-G"}) {
-        for (const std::string& g : p.allValues(opt)) {
-            call.args.push_back("-g");
-            call.args.push_back(g);
+    // Generic overrides. nvc has one form (-gNAME=VALUE), which also replaces values set in a generic map, so
+    // -g and -G map to the same thing. nvc refuses a name given twice: -G wins over -g, otherwise the last
+    // wins.
+    std::vector<GenericOverride> generics;
+    for (const Option& o : p.options) {
+        if (o.name != "-g" && o.name != "-G")
+            continue;
+        std::string gerr;
+        auto g = parseGeneric(o.name, o.values.front(), units, &gerr);
+        if (!g) {
+            plan.error = gerr;
+            return plan;
+        }
+        const auto same = std::find_if(generics.begin(), generics.end(), [&](const GenericOverride& x) {
+            return lower(x.name) == lower(g->name);
+        });
+        if (same == generics.end()) {
+            generics.push_back(std::move(*g));
+        } else if (g->all || !same->all) {
+            if (g->all == same->all && g->value != same->value)
+                plan.warnings.push_back("(lvdsim) generic " + g->name + " is given more than once; using " +
+                                        g->value);
+            *same = std::move(*g);
         }
     }
+
+    call.args.push_back("-e");
+    for (const GenericOverride& g : generics)
+        call.args.push_back(nvcGenericArg(g));
+
+    // SDF back-annotation: -sdfmax [<instance>=]<file> becomes nvc -e --sdf=max=[<instance>=]<file>, in the
+    // order given (needs the fork, change set 38).
+    static const std::pair<const char*, const char*> kSdfOptions[] = {
+        {"-sdfmin", "min"}, {"-sdftyp", "typ"}, {"-sdfmax", "max"}};
+    for (const Option& o : p.options)
+        for (const auto& [name, which] : kSdfOptions)
+            if (o.name == name)
+                call.args.push_back(std::string("--sdf=") + which + "=" + o.values.front());
+
     for (const DesignUnitName& u : units)
         call.args.push_back(u.unit);
+
+    // Code coverage: nvc collects it when the design is elaborated with --cover=<kinds> and writes the
+    // database named by --cover-file (default <top>.ncdb in the working directory).
+    if (p.has("-coverage")) {
+        std::vector<cov::Kind> kinds;
+        if (p.has("-lvdcover")) {
+            const std::string text = p.value("-lvdcover");
+            kinds = cov::parseKinds(text);
+            if (kinds.empty())
+                plan.warnings.push_back("(lvdsim) -lvdcover '" + text +
+                                        "' names no coverage kind; every kind is collected");
+        }
+        plan.coverageFile = p.value("-lvdcoverfile", lower(first.unit) + ".ncdb");
+        cov::addElaborationOptions(call.args, kinds, plan.coverageFile);
+    } else if (p.has("-lvdcover") || p.has("-lvdcoverfile")) {
+        plan.warnings.push_back("(lvdsim) -lvdcover and -lvdcoverfile have no effect without -coverage");
+    }
 
     // Waveform output: -lvdlive (live stream), -lvdwave (FST as named), -wlf (FST, extension replaced).
     std::string wave = p.value("-lvdwave");
@@ -559,11 +789,18 @@ Plan planVsim(std::vector<std::string> args, const Context& ctx) {
         live = true;
     }
     auto addWave = [&] {
+        // Arrays of composite elements (memories) are only in the waveform when asked for.
+        if (p.has("-lvdarrays") && !wave.empty())
+            call.args.push_back("--dump-arrays");
         if (live)
             call.args.push_back("--format=live");
         if (!wave.empty())
             call.args.push_back("--wave=" + wave);
     };
+
+    if (p.has("-lvdarrays") && !gui && wave.empty())
+        plan.warnings.push_back(
+            "(lvdsim) -lvdarrays has no effect without a waveform (-wlf, -lvdwave or -lvdlive)");
 
     // Scripts: the command compatibility layer first, then the user's.
     std::vector<std::string> scripts;
@@ -596,7 +833,7 @@ Plan planVsim(std::vector<std::string> args, const Context& ctx) {
             plan.startupScripts = scripts;
             plan.calls.push_back(std::move(call));
         } else {
-            plan.files.clear();  // the command line tool only validates; the GUI writes its own
+            plan.files.clear(); // the command line tool only validates; the GUI writes its own
         }
         return plan;
     }

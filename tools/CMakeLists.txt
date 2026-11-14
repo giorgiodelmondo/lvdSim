@@ -5,7 +5,16 @@ add_library(lvdtools STATIC
     src/translate.cpp
     src/environment.cpp
     src/libraries.cpp
-    src/vendor_libs.cpp)
+    src/vendor_libs.cpp
+    src/coverage.cpp
+    src/project.cpp
+    src/hdl_scanner.cpp
+    src/compile_plan.cpp
+    src/compile_runner.cpp
+    src/diagnostics.cpp
+    src/do_import.cpp
+    src/regression.cpp
+    src/project_cli.cpp)
 target_include_directories(lvdtools PUBLIC src)
 target_compile_features(lvdtools PUBLIC cxx_std_20)
 target_compile_definitions(lvdtools PRIVATE LVDSIM_SOURCE_TCL_DIR="${CMAKE_SOURCE_DIR}/tcl/compat")

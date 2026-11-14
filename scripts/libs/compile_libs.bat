@@ -106,7 +106,7 @@ echo library            files ok   failed  skipped    time
 type "%OUT%\logs\summary.txt"
 echo output: %OUT%   (lvdsim.ini written; logs in %OUT%\logs)
 for /f "usebackq delims=" %%l in ("%OUT%\logs\failed.txt") do (set "L=%%l" & echo !L:~0,200!)
-echo %WANT% | findstr /i /c:" altera_verilog " /c:" altera_lnsim " >nul && echo Altera Verilog models: altera_mf_ver, lpm_ver and the altera_lnsim .sv part use constructs nvc does not analyse yet ^(docs\libraries.md^).
+echo %WANT% | findstr /i /c:" altera_verilog " /c:" altera_lnsim " >nul && echo Altera Verilog models: altera_mf_ver and lpm_ver compile and run; the altera_lnsim .sv part uses constructs nvc does not analyse yet ^(docs\libraries.md^).
 echo %WANT% | findstr /i /c:" unisim_verilog " /c:" xpm " >nul && echo Verilog designs also need glbl: vlog -work work "%VLOG%\glbl.v" and 'vsim ... work.top work.glbl'.
 exit /b %RC%
 

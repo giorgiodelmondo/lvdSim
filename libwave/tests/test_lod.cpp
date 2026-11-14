@@ -99,3 +99,52 @@ TEST_CASE("incremental update equals full rebuild") {
         REQUIRE(same(inc.range(mid, inc.size()), full.range(mid, full.size())));
     }
 }
+
+TEST_CASE("numeric value of a bit string equals the value of the same vector") {
+    WaveStore st;
+    const SignalId id = st.addSignal(kRootScope, "v", SignalKind::Logic, 5);
+    const char* values[] = {"00000", "00001", "10000", "11111", "0H1L1", "01X01", "UUUUU", "10101", "z0000"};
+    for (Time t = 0; t < 9; ++t) st.mutableSignal(id).appendLogic(t, values[t]);
+    for (bool isSigned : {false, true}) {
+        for (std::size_t i = 0; i < 9; ++i) {
+            const double a = numericValueOfBits(values[i], isSigned);
+            const double b = numericValue(st.signal(id), i, isSigned);
+            CHECK(((std::isnan(a) && std::isnan(b)) || a == b));
+        }
+    }
+    CHECK(numericValueOfBits("1111", true) == -1.0);
+    CHECK(numericValueOfBits("1000", true) == -8.0);
+    CHECK(numericValueOfBits("1000", false) == 8.0);
+    CHECK(std::isnan(numericValueOfBits("", false)));
+    CHECK(std::isnan(numericValueOfBits(std::string(65, '0'), false)));
+    CHECK(numericValueOfBits(std::string(64, '1'), true) == -1.0);
+    CHECK(numericValueOfBits("1" + std::string(63, '0'), false) == 9223372036854775808.0);
+}
+
+TEST_CASE("an index built from values answers like one built from the signal") {
+    std::mt19937 rng(7);
+    WaveStore st;
+    const SignalId id = st.addSignal(kRootScope, "v", SignalKind::Logic, 12);
+    std::vector<double> values;
+    for (Time t = 0; t < 5000; ++t) {
+        std::string bits;
+        for (int b = 0; b < 12; ++b) bits += (rng() % 50 == 0) ? 'X' : static_cast<char>('0' + rng() % 2);
+        st.mutableSignal(id).appendLogic(t, bits);
+        values.push_back(numericValueOfBits(bits, true));
+    }
+    const NumericIndex a = NumericIndex::build(st.signal(id), true);
+    NumericIndex b = NumericIndex::fromValues(values, true);
+    REQUIRE(b.valid());
+    REQUIRE(b.isSigned());
+    REQUIRE(b.size() == a.size());
+    for (int k = 0; k < 300; ++k) {
+        const std::size_t lo = rng() % 5000, hi = lo + rng() % (5001 - lo);
+        CHECK(same(a.range(lo, hi), b.range(lo, hi)));
+    }
+    // not tied to a signal: update leaves it alone
+    st.mutableSignal(id).appendLogic(6000, "000000000000");
+    b.update(st.signal(id));
+    CHECK(b.size() == 5000);
+    CHECK(NumericIndex::fromValues({}).size() == 0);
+    CHECK(NumericIndex::fromValues({}).range(0, 1).empty());
+}

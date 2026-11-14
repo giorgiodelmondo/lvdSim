@@ -58,7 +58,7 @@ Test results of the fork on Linux (all 1525 regression entries pass, unit tests 
 [kernel-tests.md](kernel-tests.md#linux-wsl-debian).
 
 In this repository's own verification (2026-11-08) the nvc build was `~/build/nvc-fork-linux-s1` (source clone `~/build/nvc-fork-src-s1`,
-commit `754af76cc`, built exactly as above). Replace `~/build/nvc-linux` by that name if you reuse it.
+commit `754af76cc`, built exactly as above; the merge `53d41eeae` was checked the same way in `~/build/nvc-fork-linux-s2`). Replace `~/build/nvc-linux` by that name if you reuse it.
 
 ## 3. Build lvdsim
 
@@ -116,7 +116,7 @@ NVC_BUILD=$HOME/build/nvc-linux OUT_DIR=$HOME/build/lvdsim/appdir scripts/packag
 
 `--skip-build` reuses the build of section 3 in `~/build/lvdsim/linux-release` (the script's fixed build directory; without it the script
 configures and builds that preset itself). `NVC_BUILD` must be a build of the branch `lvdsim` of the kernel (section 2). The output is
-`$OUT_DIR/lvdsim-0.1.0-linux-x86_64/` (the bundle, run it with `AppRun`) and `lvdsim-0.1.0-linux-x86_64.run` (the installer). The script
+`$OUT_DIR/lvdsim-0.1.5-linux-x86_64/` (the bundle, run it with `AppRun`) and `lvdsim-0.1.5-linux-x86_64.run` (the installer). The script
 never overwrites: pick a new `OUT_DIR` or move the old outputs away first. `COMPRESS=gz` avoids xz.
 
 What is inside and what comes from the host:

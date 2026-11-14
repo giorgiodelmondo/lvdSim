@@ -2,6 +2,10 @@
 #include <catch2/catch_test_macros.hpp>
 #include <process.hpp>
 
+#ifndef _WIN32
+#include <csignal>
+#endif
+
 using namespace lvd::tools;
 
 namespace {
@@ -14,7 +18,7 @@ ProcessResult cmake(std::vector<std::string> args, ProcessOptions o = {}) {
     return runProcess(argv, o);
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("a program runs and its output is captured") {
     const auto r = cmake({"--version"});
@@ -52,7 +56,7 @@ TEST_CASE("environment variables and PATH additions reach the child only") {
     REQUIRE(r.output.find("/lvd/first") != std::string::npos);
 
     const auto again = cmake({"-E", "environment"});
-    REQUIRE(again.output.find("LVD_TEST_VAR") == std::string::npos);  // not leaked into later children
+    REQUIRE(again.output.find("LVD_TEST_VAR") == std::string::npos); // not leaked into later children
     REQUIRE(again.output.find("/lvd/first") == std::string::npos);
 }
 
@@ -65,4 +69,20 @@ TEST_CASE("the working directory can be set") {
     REQUIRE((!r.started || r.exitCode != 0));
 }
 
-TEST_CASE("the executable path is known") { REQUIRE_FALSE(executablePath().empty()); }
+TEST_CASE("the executable path is known") {
+    REQUIRE_FALSE(executablePath().empty());
+}
+
+#ifndef _WIN32
+TEST_CASE("Ctrl-C during a child is left to the child") {
+    // The child sends SIGINT to its parent (this test), ignores it itself, and exits with 3. Without the
+    // parent ignoring SIGINT while it waits, this test program would end here.
+    const auto r = runProcess({"sh", "-c", "trap '' INT; kill -INT $PPID; sleep 0.2; exit 3"});
+    REQUIRE(r.started);
+    REQUIRE(r.exitCode == 3);
+    // and the default comes back afterwards
+    struct sigaction now {};
+    sigaction(SIGINT, nullptr, &now);
+    REQUIRE(now.sa_handler != SIG_IGN);
+}
+#endif

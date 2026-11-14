@@ -45,6 +45,16 @@ std::string unescape(const std::string& s) {
     return out;
 }
 
+PortDirection directionFromWord(const std::string& w) {
+    if (w == "in") return PortDirection::In;
+    if (w == "out") return PortDirection::Out;
+    if (w == "inout") return PortDirection::InOut;
+    if (w == "buffer") return PortDirection::Buffer;
+    if (w == "linkage") return PortDirection::Linkage;
+    if (w == "internal") return PortDirection::Internal;
+    return PortDirection::Unknown;
+}
+
 }  // namespace
 
 LiveReader::LiveReader(std::string path) : path_(std::move(path)), byHandle_(1, kNoSignal) {}
@@ -103,8 +113,9 @@ bool LiveReader::apply(const std::string& line, WaveStore& store, PollResult& ou
     if (std::isdigit(static_cast<unsigned char>(w[0]))) {
         std::uint64_t h = 0;
         std::string kind;
-        if (!parseUnsigned(w, h) || h == 0 || h >= byHandle_.size() || !nextWord(line, pos, kind) || kind.size() != 1)
-            return false;
+        if (!parseUnsigned(w, h) || h <= handleBase_) return false;
+        h -= handleBase_;  // handles of a restarted run are offset by the base of the last R record
+        if (h >= byHandle_.size() || !nextWord(line, pos, kind) || kind.size() != 1) return false;
         if (byHandle_[h] == kNoSignal) return false;
         Signal& s = store.mutableSignal(byHandle_[h]);
         const std::string value = restOfLine(line, pos);
@@ -130,6 +141,22 @@ bool LiveReader::apply(const std::string& line, WaveStore& store, PollResult& ou
         return true;
     }
 
+    if (w == "R") {
+        // Restart: time goes back to zero and the values so far belong to the earlier run. The definitions stay;
+        // the base grows by the number of handles at every restart, which is checked so that a stream this reader
+        // does not understand cannot put values on the wrong signals.
+        std::string bs;
+        std::uint64_t base = 0;
+        if (!defsDone_ || !nextWord(line, pos, bs) || !parseUnsigned(bs, base) ||
+            base != handleBase_ + (byHandle_.size() - 1))
+            return false;
+        handleBase_ = base;
+        store.clearValues();
+        time_ = 0;
+        out.restarted = true;
+        ++restarts_;
+        return true;
+    }
     if (w == "E") {
         if (!defsDone_) out.definitionsCompleted = true;
         defsDone_ = true;
@@ -161,14 +188,23 @@ bool LiveReader::apply(const std::string& line, WaveStore& store, PollResult& ou
         if (defsDone_) return false;  // keeps references into the store stable
 
         if (h < byHandle_.size() && byHandle_[h] != kNoSignal) {
-            store.addAlias(scope_, std::move(name), byHandle_[h]);
+            lastEntry_ = store.addAlias(scope_, std::move(name), byHandle_[h]);
         } else {
             const SignalKind k = kind[0] == 'R' ? SignalKind::Real : kind[0] == 'S' ? SignalKind::String : SignalKind::Logic;
             const SignalId id = store.addSignal(scope_, std::move(name), k, static_cast<std::uint32_t>(width));
             if (h >= byHandle_.size()) byHandle_.resize(h + 1, kNoSignal);
             byHandle_[h] = id;
+            lastEntry_ = id;
         }
         ++out.newSignals;
+        return true;
+    }
+    if (w == "D") {
+        // Port direction of the entry of the preceding V record. A word this reader does not know leaves it Unknown.
+        std::string dir;
+        if (lastEntry_ == kNoSignal || defsDone_ || !nextWord(line, pos, dir)) return false;
+        store.setDirection(lastEntry_, directionFromWord(dir));
+        lastEntry_ = kNoSignal;
         return true;
     }
     return false;

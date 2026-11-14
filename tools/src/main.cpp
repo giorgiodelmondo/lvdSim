@@ -5,6 +5,7 @@
 #include "environment.hpp"
 #include "library_map.hpp"
 #include "process.hpp"
+#include "project_cli.hpp"
 #include "translate.hpp"
 
 #include <algorithm>
@@ -114,7 +115,7 @@ int main(int argc, char** argv) {
     std::string tool = toolNameFromProgram(argc > 0 ? argv[0] : "");
     if (tool == "lvdsim-cli" || tool == "lvdsim") {
         if (args.empty()) {
-            std::cerr << "usage: lvdsim-cli <vlib|vmap|vcom|vlog|vsim> [options]\n";
+            std::cerr << "usage: lvdsim-cli <vlib|vmap|vcom|vlog|vsim|compile|regress|project> [options]\n";
             return 2;
         }
         tool = args.front();
@@ -122,6 +123,14 @@ int main(int argc, char** argv) {
     }
 
     const Environment env = discoverEnvironment();
+    // Project commands (docs/projects.md): they run several nvc calls themselves instead of producing a plan.
+    using ProjectCommand = int (*)(const std::vector<std::string>&, const Environment&);
+    static const std::pair<const char*, ProjectCommand> kProjectCommands[] = {
+        {"compile", runCompileCommand}, {"regress", runRegressCommand}, {"project", runProjectCommand}};
+    for (const auto& [name, run] : kProjectCommands)
+        if (tool == name)
+            return run(args, env);
+
     Plan plan;
     if (tool == "vlib")
         plan = planVlib(args, env.ctx);
@@ -134,7 +143,8 @@ int main(int argc, char** argv) {
     else if (tool == "vsim")
         plan = planVsim(args, env.ctx);
     else {
-        std::cerr << "lvdsim-cli: unknown tool '" << tool << "' (expected vlib, vmap, vcom, vlog or vsim)\n";
+        std::cerr << "lvdsim-cli: unknown tool '" << tool
+                  << "' (expected vlib, vmap, vcom, vlog, vsim, compile, regress or project)\n";
         return 2;
     }
     return execute(plan, tool, env);
