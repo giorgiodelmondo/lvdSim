@@ -49,6 +49,7 @@
 #include "app/console_input.hpp"
 #include "app/coverage_pane.hpp"
 #include "app/objects_pane.hpp"
+#include "app/palette_repair.hpp"
 #include "app/processes_pane.hpp"
 #include "app/project_pane.hpp"
 #include "app/project_session.hpp"
@@ -79,6 +80,7 @@ using namespace lvd;
 
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
+    lvd::gui::installPaletteRepair(app); // some desktop themes give black placeholder text on dark fields
 
     QStringList vsimArgs, sends;
     QList<double> cursors;

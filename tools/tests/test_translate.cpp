@@ -216,16 +216,26 @@ TEST_CASE("vsim batch run with a command string") {
     REQUIRE(p.calls.size() == 1);
     REQUIRE(p.calls[0].args == Args{"--std=08", "--work=work:work", "-e", "top", "--do", "/x/lvdcompat.tcl",
                                     "/tmp/t/lvdsim_vsim_do.tcl"});
-    REQUIRE(p.files.size() == 1);
-    REQUIRE(p.files[0].path == "/tmp/t/lvdsim_vsim_do.tcl");
+    // The commands go into a script of their own, run through `do` (results printed as at the prompt).
+    REQUIRE(p.files.size() == 2);
+    REQUIRE(p.files[0].path == "/tmp/t/lvdsim_vsim_cmds.do");
     REQUIRE(p.files[0].contents == "run 100 ns; quit -f\n");
+    REQUIRE(p.files[1].path == "/tmp/t/lvdsim_vsim_do.tcl");
+    REQUIRE(p.files[1].contents == "do {/tmp/t/lvdsim_vsim_cmds.do}\n");
 }
 
-TEST_CASE("vsim uses an existing script file directly") {
+TEST_CASE("vsim runs an existing script file through do") {
     auto p = planVsim({"-c", "-do", "run.do", "top"}, makeCtx({"work"}, {{"run.do", "run -all\n"}}));
     REQUIRE(p.ok());
-    REQUIRE(p.files.empty());
-    REQUIRE(p.calls[0].args.back() == "run.do");
+    REQUIRE(p.files.size() == 1);
+    REQUIRE(p.files[0].contents == "do {run.do}\n");
+    REQUIRE(p.calls[0].args.back() == "/tmp/t/lvdsim_vsim_do.tcl");
+
+    SECTION("a file name with braces or spaces stays one Tcl word") {
+        auto q = planVsim({"-c", "-do", "my {x} run.do", "top"},
+                          makeCtx({"work"}, {{"my {x} run.do", "run -all\n"}}));
+        REQUIRE(q.files[0].contents == "do my\\ \\{x\\}\\ run.do\n");
+    }
 }
 
 TEST_CASE("vsim without -do starts the interactive shell") {
@@ -448,7 +458,8 @@ TEST_CASE("vsim without -c is a GUI session") {
         REQUIRE(p.calls.size() == 1);
         REQUIRE(p.calls[0].args == Args{"--std=08", "--work=work:work", "-e", "--generic-default=*.N=4",
                                         "top", "-i", "--format=live", "--wave=/tmp/s/live.lvw"});
-        REQUIRE(p.startupScripts == Args{"/x/lvdcompat.tcl", "/tmp/t/lvdsim_vsim_do.tcl"});
+        REQUIRE(p.startupScripts == Args{"/x/lvdcompat.tcl"});
+        REQUIRE(p.startupDo == "/tmp/t/lvdsim_vsim_cmds.do"); // run with `do` by the GUI
         REQUIRE(p.files.size() == 1); // the GUI writes the temporary script
     }
     SECTION("without -do only the compatibility script is sourced") {

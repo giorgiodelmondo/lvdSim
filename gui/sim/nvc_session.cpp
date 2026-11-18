@@ -109,6 +109,8 @@ bool NvcSession::start(const Config& config) {
         startupIndices_.push_back(send(c));
     for (const QString& s : config.startupScripts)
         send("source " + tclPath(s));
+    if (!config.startupDo.isEmpty())
+        send("do " + tclPath(config.startupDo));
     emit busyChanged(true);
     return true;
 }

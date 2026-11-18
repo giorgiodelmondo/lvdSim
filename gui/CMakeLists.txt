@@ -65,6 +65,7 @@ add_library(lvdgui_app STATIC
     app/unit_source.cpp
     app/coverage_pane.cpp
     app/compile_libs_dialog.cpp
+    app/palette_repair.cpp
     app/portable_mode.cpp
     app/vhdl_highlighter.cpp
     app/sim_window.cpp

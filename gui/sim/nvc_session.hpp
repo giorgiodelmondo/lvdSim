@@ -30,6 +30,7 @@ public:
         QStringList pathPrepend; ///< directories put in front of PATH (runtime DLLs)
         QString workingDir;
         QStringList startupScripts; ///< sourced once the shell is up, after the GUI hooks are enabled
+        QString startupDo;          ///< then run with `do` (the user's -do script: results are printed)
         /// Commands sent before the startup scripts (for example the breakpoints the GUI keeps), so that they
         /// are in force when a script runs. Their numbers are in startupCommandIndices().
         QStringList commands;

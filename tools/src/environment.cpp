@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "environment.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <vector>
 
 #ifdef _WIN32
 #include <process.h>
@@ -139,19 +141,29 @@ Environment discoverEnvironment() {
         c.nvcGlobalArgs.push_back("-L");
         c.nvcGlobalArgs.push_back(libDir);
     }
-    // Extra global nvc options, split at spaces (for example "-M 128m" for very large packages).
+    // Extra global nvc options, split at spaces (for example "-M 256m" for very large packages).
+    std::vector<std::string> opts;
     if (const std::string o = envVar("LVDSIM_NVC_OPTS"); !o.empty()) {
         std::string word;
         for (const char ch : o + ' ') {
             if (ch == ' ' || ch == '	') {
                 if (!word.empty())
-                    c.nvcGlobalArgs.push_back(word);
+                    opts.push_back(word);
                 word.clear();
             } else {
                 word += ch;
             }
         }
     }
+    // nvc's default unit heap (16 MB) is too small for unisim_VCOMP and for elaborating a medium design; the
+    // space is only reserved, and what a unit does not use is given back when the unit is finished.
+    const bool hasHeap =
+        std::any_of(opts.begin(), opts.end(), [](const std::string& w) { return w.rfind("-M", 0) == 0; });
+    if (!hasHeap) {
+        c.nvcGlobalArgs.push_back("-M");
+        c.nvcGlobalArgs.push_back(kDefaultNvcUnitHeap);
+    }
+    c.nvcGlobalArgs.insert(c.nvcGlobalArgs.end(), opts.begin(), opts.end());
     c.compatTcl = findCompatTcl();
     c.tempDir = (fs::temp_directory_path() / ("lvdsim_" + std::to_string(LVD_GETPID()))).generic_string();
     if (const std::string s = envVar("LVDSIM_STD"); !s.empty())

@@ -7,6 +7,9 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Wave window: **cursor magnet**. A cursor placed or dragged with the mouse snaps to the nearest transition of the selected row(s) within
+  8 pixels (a click selects its row first, so clicking next to an edge lands on it), as in the Vivado simulator. Cursors moved by commands,
+  edge and value searches are not snapped.
 - GUI: **View Declaration / View Definition / View Instantiation / View Source** - double-click a signal in Objects to open the Source dock
   at its declaration (the name selected, the line flashing); a port merged with the signal it connects to shows its own port declaration.
   Sim: double-click (or View Definition) shows the architecture, module, block or generate statement of an instance, View Instantiation the
@@ -38,10 +41,41 @@ All notable changes to this project are documented here. The format follows
   no longer drawn are freed when all atlases would exceed 384 MB (they were kept until the device was released).
 
 ### Changed
+- Wave window: **Add cursor** (`|+`) puts the new cursor exactly on the active cursor instead of the middle of the view (the middle only
+  when there is no cursor yet); pressing on cursors that share a spot drags the active one.
 - GUI: **double-click in Objects shows the declaration** instead of adding the signal to the wave window. Adding is Return, Add to Wave in
   the context menu, a drag, or `add wave`. Double-click on a Library unit opens its source (it only expanded the row before).
 
 ### Fixed
+- **nvc gets a 128 MB unit heap by default** (`-M 128m`; nvc's own default is 16 MB), so elaborating a medium design no longer stops
+  with "memory exhausted while creating unit" (nvc's hint names `-M`, which is not a `vsim` option). `-M` in `LVDSIM_NVC_OPTS` still
+  takes precedence; the space is only reserved, unused parts are released.
+- Shell scripts (`examples/*/*.sh`, `scripts/**/*.sh`) are executable in git, so `./run.sh` and `scripts/libs/compile_libs.sh` run as the
+  docs show.
+- nvc fork: a port map formal such as `x(0) =>` is no longer read as a type conversion when a type `x` is also visible; a component
+  inside a library other than `work` (e.g. lvdlib) binds by default to an entity compiled into `work`, as in Questa and xsim (the
+  elaboration stopped with "no suitable architecture for LVDLIB.<entity>").
+- nvc fork: Verilog `begin ... end` directly inside a generate block or region (1364-2001 syntax) is accepted, so Xilinx's Block Memory
+  Generator behavioral model (`blk_mem_gen_v8_4.v`) compiles and simulates.
+- nvc fork: a Verilog port connected to a whole net (`.rx_valid(rx_valid)`) is visible inside its instance again: `examine`, `find`,
+  `add wave /dut/u_rx/rx_valid` and the waveform dump found only the net in the parent.
+- Wave window: **a bus value held for a long time lost its outline** (only its label and the fill of an unknown value were left)
+  once the segment was more than 100000 pixels long: after a long run (`run -all`, many Run clicks) or deep zoom. Both renderers.
+- Wave window: **zooming keeps the active cursor in place** while it is in view: Zoom in / Zoom out (toolbar, View menu, +/-,
+  `wave zoom`) and Ctrl+wheel, which zoomed around the middle and the pointer whatever the cursor; zooming in on a cursor at 0 fs now
+  stays at the start. Without a visible cursor the buttons zoom around the middle and the wheel around the pointer, as before.
+- `examine`: a VHDL name written in upper case (`/dut/REG_DATA`) is found; `-radix hexadecimal` (and `octal`, `unsigned`, `decimal`;
+  `-hex`, `-hexadecimal`, ...) applies to vectors, which were always printed in binary (`-hexadecimal` and `-radix unsigned` were
+  syntax errors). Done in the command compatibility layer; `-json` is unchanged.
+- `do` scripts (and `vsim -do`, batch and GUI) print the result of each command like the prompt, so `examine /x` in a script shows
+  the value; commands separated by `;` count one by one, errors name the script file and line. `quietly` now hides the result.
+- GUI: **placeholder text is readable on dark desktop themes**. Some themes (XFCE with the GTK platform theme) hand Qt a dark palette
+  with black placeholder text once the window is shown, so the hints of Go to, the Objects filter, Find and the console were invisible;
+  the application palette is repaired (Qt's default: text half way to the background) whenever the theme changes it. The Source line
+  numbers and the Coverage dock use that colour instead of `Mid`, which such themes make equal to the background.
+- Wave window: **dividers stand out**: a band across the name, value and wave columns with a line on top and bold text (was a thin
+  line through the wave area), with both renderers.
+- docs/building-linux.md: the kernel clone works without `kernel/nvc` (URL of the fork), and the native Debian 13 run is recorded.
 - GUI: **Stop during a run** ended the simulator only by killing it after 3 s (the shell read `exit` only when the run ended, which on a
   free-running clock is never; coverage counts and the end of the waveform were lost). Stop now breaks the run first, so the simulator exits
   normally.

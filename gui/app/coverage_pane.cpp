@@ -63,7 +63,7 @@ public:
             p->fillRect(QRect(r.left(), r.top(), w, r.height()), barColour(pct));
             p->setPen(QColor(0x20, 0x20, 0x20));
         } else {
-            p->setPen(option.palette.color(QPalette::Mid));
+            p->setPen(option.palette.color(QPalette::PlaceholderText));
         }
         p->drawText(r, Qt::AlignCenter, text);
         p->restore();

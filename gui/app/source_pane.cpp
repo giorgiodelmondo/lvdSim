@@ -223,7 +223,7 @@ void SourceView::resizeEvent(QResizeEvent* event) {
 void SourceView::paintGutter(QPaintEvent* event) {
     QPainter p(gutter_);
     p.fillRect(event->rect(), palette().color(QPalette::AlternateBase));
-    p.setPen(palette().color(QPalette::Mid));
+    p.setPen(palette().color(QPalette::PlaceholderText));
     QTextBlock block = firstVisibleBlock();
     int number = block.blockNumber();
     int top = qRound(blockBoundingGeometry(block).translated(contentOffset()).top());
@@ -279,9 +279,9 @@ void SourceView::paintGutter(QPaintEvent* event) {
                 p.setPen(Qt::NoPen);
                 p.setBrush(QColor(0x2e, 0xa0, 0x43));
                 p.drawEllipse(QPoint(8, top + h / 2), 3, 3);
-                p.setPen(palette().color(QPalette::Mid));
+                p.setPen(palette().color(QPalette::PlaceholderText));
             } else {
-                p.setPen(palette().color(QPalette::Mid));
+                p.setPen(palette().color(QPalette::PlaceholderText));
             }
             p.drawText(0, top, w - 5, fontMetrics().height(), Qt::AlignRight, QString::number(line));
             if (const auto c = coverage_.constFind(line); c != coverage_.constEnd()) {

@@ -7,6 +7,7 @@
 #include <cctype>
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 namespace lvd::tools {
 
@@ -16,6 +17,20 @@ std::string lower(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return s;
+}
+
+/// One Tcl word holding text exactly (a file name in a generated script): braces when they are safe, else
+/// every special character escaped.
+std::string tclWord(const std::string& text) {
+    if (!text.empty() && text.find_first_of("{}\\") == std::string::npos && text.back() != '\\')
+        return "{" + text + "}";
+    std::string out;
+    for (char c : text) {
+        if (std::string_view("{}[]$\"\\; \t").find(c) != std::string_view::npos)
+            out += '\\';
+        out += c;
+    }
+    return out.empty() ? "{}" : out;
 }
 
 bool startsWith(const std::string& s, const std::string& prefix) {
@@ -812,15 +827,27 @@ Plan planVsim(std::vector<std::string> args, const Context& ctx) {
                                     "wave and similar commands are unavailable");
     }
     if (p.has("-do")) {
+        // The user's script (a file, or the commands given on the command line) runs through the `do` command
+        // of the compatibility layer, which prints each command's result like the prompt does.
         const std::string doArg = p.value("-do");
-        if (ctx.readFile(doArg).has_value()) {
-            scripts.push_back(doArg);
-        } else {
+        std::string userScript = doArg;
+        if (!ctx.readFile(doArg).has_value()) {
             TempFile f;
-            f.path = ctx.tempDir + "/lvdsim_vsim_do.tcl";
+            f.path = ctx.tempDir + "/lvdsim_vsim_cmds.do";
             f.contents = doArg + "\n";
-            scripts.push_back(f.path);
+            userScript = f.path;
             plan.files.push_back(std::move(f));
+        }
+        if (ctx.compatTcl.empty()) {
+            scripts.push_back(userScript); // no `do` without the compatibility layer: sourced as it is
+        } else if (gui) {
+            plan.startupDo = userScript; // the GUI sends `do <script>` itself (the transcript shows the name)
+        } else {
+            TempFile w;
+            w.path = ctx.tempDir + "/lvdsim_vsim_do.tcl";
+            w.contents = "do " + tclWord(userScript) + "\n";
+            scripts.push_back(w.path);
+            plan.files.push_back(std::move(w));
         }
     }
 

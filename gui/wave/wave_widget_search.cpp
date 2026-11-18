@@ -5,6 +5,7 @@
 #include "wave/view_state.hpp"
 #include "wave/wave_widget.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <tuple>
 #include <utility>
@@ -64,6 +65,44 @@ std::vector<int> WaveWidget::searchRows() const {
             out.push_back(i);
     }
     return out;
+}
+
+double WaveWidget::snapToEdge(double t) const {
+    if (!store_)
+        return t;
+    t = std::max(0.0, t);
+    const double tol = kSnapPixels * view_.timePerPixel;
+    // Forward from floor(t) - 1 finds an edge at floor(t) or later; backward from ceil(t) one before ceil(t).
+    const double lo = std::floor(t);
+    const std::optional<Time> fwdFrom =
+        lo >= 1.0 ? std::optional<Time>(static_cast<Time>(lo) - 1) : std::nullopt;
+    const std::optional<Time> bwdFrom = static_cast<Time>(std::ceil(t));
+    double best = t;
+    double bestDist = tol;
+    bool found = false;
+    const auto consider = [&](std::optional<Time> e) {
+        if (!e)
+            return;
+        const double d = std::fabs(static_cast<double>(*e) - t);
+        if (d <= bestDist) {
+            best = static_cast<double>(*e);
+            bestDist = d;
+            found = true;
+        }
+    };
+    for (int i : searchRows()) {
+        const Row& r = rows_[static_cast<std::size_t>(i)];
+        if (r.signal != nullptr) {
+            const SearchTarget target{r.signal, r.bit};
+            consider(findEdge(target, fwdFrom, SearchDirection::Forward));
+            consider(findEdge(target, bwdFrom, SearchDirection::Backward));
+        } else if (const auto* bus = dynamic_cast<const BusSource*>(r.source.get())) {
+            const BusBits bits(*bus);
+            consider(findEdge(bits, fwdFrom, SearchDirection::Forward));
+            consider(findEdge(bits, bwdFrom, SearchDirection::Backward));
+        }
+    }
+    return found ? best : t;
 }
 
 Radix WaveWidget::rowRadix(int row) const {

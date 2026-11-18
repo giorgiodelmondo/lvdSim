@@ -262,6 +262,42 @@ private slots:
         }
     }
 
+    // A bus value held far beyond the tile (a long run, or zoomed in deep) keeps its outline: the outline
+    // used to be one line from the change to the end of the data, and line() drops lines over 100000 pixels.
+    void longHeldBusValueKeepsItsOutline() {
+        WaveStore st;
+        const SignalId id = st.addSignal(kRootScope, "b", SignalKind::Logic, 8);
+        st.mutableSignal(id).appendLogic(0, "00000000");
+        st.mutableSignal(id).appendLogic(100, "10101101");
+        const Time end = 1000000000; // a billion pixels at one time unit per pixel
+        st.extendTimeRange(0);
+        st.extendTimeRange(end);
+        SignalSource src(st.signal(id), nullptr, false);
+        PainterRenderer r;
+        const int top = 3, bottom = kHeight - 4;
+        for (long long tile : {0LL, 7LL}) { // the tile with the change, and one with no change in it
+            TileRequest q = request(src, 1.0, tile);
+            q.validEnd = end;
+            const QImage img = r.renderTile(q);
+            for (int x : {0, 150, 255}) {
+                if (tile == 0 && x == 0)
+                    continue; // the first value, ending at 100, is a short segment anyway
+                const Span s = column(img, x);
+                QVERIFY2(s.lo == top && s.hi == bottom,
+                         qPrintable(QString("tile %1 column %2: outline drawn %3..%4, expected %5..%6")
+                                        .arg(tile)
+                                        .arg(x)
+                                        .arg(s.lo)
+                                        .arg(s.hi)
+                                        .arg(top)
+                                        .arg(bottom)));
+            }
+            // The same picture as a value held without an end.
+            q.validEnd = std::numeric_limits<Time>::max();
+            QCOMPARE(img, r.renderTile(q));
+        }
+    }
+
     void tilesBeyondTheEndAreBlank() {
         MixedStore m(500);
         PainterRenderer r;

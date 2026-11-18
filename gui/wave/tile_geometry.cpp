@@ -216,9 +216,13 @@ void buildBus(TileGeometry& g, const TileRequest& r, const Palette& pal) {
         segs.push_back({static_cast<double>(src.time(i)), t1, i});
     }
 
+    // Ends far outside the tile are pulled in to just beyond its edges, so the outline of a long held value
+    // is a short line instead of one millions of pixels long (line() rejects those, so the outline vanished).
+    // The margin keeps the slant of a visible end and the narrow-segment test unchanged.
+    const double left = -16.0, right = r.widthPx + 16.0;
     for (const Seg& s : segs) {
-        const double x0 = std::isinf(s.t0) ? -4.0 : (s.t0 - tileStart) / r.timePerPixel;
-        const double x1 = std::isinf(s.t1) ? r.widthPx + 4.0 : (s.t1 - tileStart) / r.timePerPixel;
+        const double x0 = std::isinf(s.t0) ? left : std::max(left, (s.t0 - tileStart) / r.timePerPixel);
+        const double x1 = std::isinf(s.t1) ? right : std::min(right, (s.t1 - tileStart) / r.timePerPixel);
         const Rgba c = colourFor(s.change);
         const double w = x1 - x0;
 

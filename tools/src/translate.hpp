@@ -56,6 +56,7 @@ struct Plan {
     bool gui = false;
     std::vector<std::string> guiArgs;
     std::vector<std::string> startupScripts; ///< sourced in order once the shell is up (GUI only)
+    std::string startupDo; ///< the user's -do script, run with `do` after startupScripts (GUI only)
 
     bool ok() const noexcept { return error.empty(); }
 };

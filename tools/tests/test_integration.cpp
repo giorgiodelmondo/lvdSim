@@ -196,6 +196,79 @@ TEST_CASE("familiar simulator commands in a script") {
     }
 }
 
+TEST_CASE("examine: radix of vectors, VHDL names in any case, results printed by do scripts") {
+    Sandbox sb;
+    REQUIRE_NVC(sb);
+    sb.write("v.vhd", R"(
+library ieee;
+use ieee.std_logic_1164.all;
+entity v is end;
+architecture a of v is
+  signal Reg_Data : std_logic_vector(7 downto 0) := x"AD";
+  signal meta : std_logic_vector(7 downto 0) := "UUUU01XZ";
+  signal n : integer := 9;
+begin
+end;
+)");
+    REQUIRE(sb.run("vlib", {"work"}).exitCode == 0);
+    REQUIRE(sb.run("vcom", {"-2008", "v.vhd"}).exitCode == 0);
+
+    SECTION("radix and case") {
+        auto r = sb.run("vsim", {"-c", "-do",
+                                 "run 1 ns; "
+                                 "puts \"bin=[examine /REG_DATA]\"; "
+                                 "puts \"hex=[examine -radix hex /reg_data]\"; "
+                                 "puts \"hex2=[exa -hexadecimal /Reg_Data]\"; "
+                                 "puts \"uns=[examine -radix unsigned /reg_data]\"; "
+                                 "puts \"dec=[examine -radix decimal /reg_data]\"; "
+                                 "puts \"oct=[examine -radix octal /reg_data]\"; "
+                                 "puts \"meta=[examine -hex /meta]\"; "
+                                 "puts \"int=[examine -radix hex /N]\"; "
+                                 "puts \"two=[examine -hex /reg_data /meta]\"; "
+                                 "puts \"missing=[catch {examine /nothing} m] $m\"; quit -f",
+                                 "v"});
+        INFO(r.output);
+        REQUIRE(r.exitCode == 0);
+        CHECK(r.output.find("bin=\"10101101\"") != std::string::npos);
+        CHECK(r.output.find("hex=AD") != std::string::npos);
+        CHECK(r.output.find("hex2=AD") != std::string::npos);
+        CHECK(r.output.find("uns=173") != std::string::npos);
+        CHECK(r.output.find("dec=-83") != std::string::npos);
+        CHECK(r.output.find("oct=255") != std::string::npos);
+        CHECK(r.output.find("meta=UX") != std::string::npos); // all U in the upper digit, mixed in the lower
+        CHECK(r.output.find("int=0x9") != std::string::npos);
+        CHECK(r.output.find("two=AD UX") != std::string::npos);
+        CHECK(r.output.find("missing=1 cannot find name '/nothing'") != std::string::npos);
+    }
+    SECTION("a do script prints each command's result, quietly does not") {
+        sb.write("show.do", "run 1 ns\n"
+                            "examine -hex /reg_data\n"
+                            "set a first; set b second\n"
+                            "quietly set c hidden\n"
+                            "# a comment; set d not_run\n"
+                            "examine \\\n  /n\n"
+                            "if {1} { return }\n"
+                            "puts not_reached\n");
+        auto r = sb.run("vsim", {"-c", "-do", "do show.do; quit -f", "v"});
+        INFO(r.output);
+        REQUIRE(r.exitCode == 0);
+        // one result per command, also after ;
+        CHECK(r.output.find("AD\nfirst\nsecond\n") != std::string::npos);
+        CHECK(r.output.find("hidden") == std::string::npos);
+        CHECK(r.output.find("not_run") == std::string::npos);
+        CHECK(r.output.find("\n9\n") != std::string::npos);
+        CHECK(r.output.find("not_reached") == std::string::npos);
+    }
+    SECTION("an error in a do script names the file and the line") {
+        sb.write("bad.do", "run 1 ns\n\nexamine /nothing\nputs after\n");
+        auto r = sb.run("vsim", {"-c", "-do", "bad.do", "v"});
+        INFO(r.output);
+        CHECK(r.exitCode != 0);
+        CHECK(r.output.find("bad.do\" line 3") != std::string::npos);
+        CHECK(r.output.find("after") == std::string::npos);
+    }
+}
+
 TEST_CASE("run -all stops when the design finishes") {
     Sandbox sb;
     REQUIRE_NVC(sb);

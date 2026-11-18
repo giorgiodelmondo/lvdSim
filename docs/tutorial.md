@@ -250,7 +250,14 @@ brought back with the **View** menu.
 - **Cursors** (toolbar buttons `|+` and `|-`, shift-click in the wave, or `--cursor` on the command line): the value column shows each signal at cursor 1.
   With two cursors, the band between the ruler and the first row carries the labels `C1 400 ns`, `C2 1.1 us` and the delta
   `700 ns`. The same band holds the report arrows of [section 4](#4-reports-in-the-transcript-and-the-event-band), so labels never cover a wave.
-- Zoom with the magnifier buttons (or `+`, `-`, `F`), **Go to:** accepts `1500 ps` or `12.5 ns`.
+  `|+` puts the new cursor exactly on the active one (the yellow one when there is only one); drag it from there, the drag takes the new
+  cursor. Shift-click adds one at the pointer.
+- **Cursor magnet**: a cursor placed or dragged with the mouse jumps to a transition of the selected row(s) when one is within 8 pixels, as
+  in the Vivado simulator. A click in a row selects it first, so clicking next to an edge of a signal lands exactly on that edge. With no
+  row selected (Ctrl-click the selected row to clear it) the cursor goes where you click.
+- Zoom with the magnifier buttons (or `+`, `-`, Ctrl+wheel, `F`), **Go to:** accepts `1500 ps` or `12.5 ns`. While the active
+  cursor (the yellow one when there is only one) is in view, zooming keeps it where it is on the screen, so a cursor at 0 fs keeps
+  the start of the run at the left edge; without a visible cursor the buttons zoom around the middle and the wheel around the pointer.
 
 #### Arranging signals: groups, dividers, rename, move
 
@@ -301,7 +308,7 @@ for nested groups; see [display-format.md](display-format.md)), by **Save wave l
   ![Follow on: the view sits at the end of the run (2 us) and the button is pressed](images/wave_follow_on.png)
   Anything that moves the window by hand switches it off and the button pops out: the horizontal bar, shift/sideways wheel, middle
   drag, Ctrl+Left/Right, Home/End, Go to, a cursor jump that has to scroll, Zoom full (`F`). Zooming (wheel, `+`, `-`) keeps it on and
-  keeps the end at the right edge, instead of the point under the pointer. If you never zoomed, the view still fits the whole run
+  keeps the end at the right edge, instead of the cursor or the point under the pointer. If you never zoomed, the view still fits the whole run
   (which ends at the end of the data as well) until your first zoom. The state is saved in the settings (`wave/follow`). With Follow
   off nothing moves when data arrives, except that a view that is already showing the end keeps showing it.
 - **Analog Settings...** (context menu of an analog row, and the Wave menu): a modal dialog for the selected analog rows. **Auto range**

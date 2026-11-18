@@ -17,7 +17,7 @@ Unknown options produce a warning and are skipped. `-strict` (or `LVDSIM_STRICT=
 |----------|---------|
 | `LVDSIM_NVC` | nvc executable. Default: `nvc/bin/nvc[.exe]` inside the installation (next to the tool or one directory up), then next to the tool, then `PATH`. |
 | `LVDSIM_NVC_LIBDIR` | extra library directory for nvc (`-L`); for a build tree use `<build>/lib`. Default for a packaged nvc: `nvc/lib` of the installation. |
-| `LVDSIM_NVC_OPTS` | extra global nvc options, split at spaces, for example `-M 128m` for very large packages such as Xilinx `unisim_VCOMP`. |
+| `LVDSIM_NVC_OPTS` | extra global nvc options, split at spaces, for example `-M 256m` when nvc stops with "memory exhausted while creating unit" (its hint names the nvc option `-M`, which is set here, not on `vcom`/`vsim`). Without `-M` here, lvdsim passes `-M 128m` (nvc's own default, 16 MB, is too small for Xilinx `unisim_VCOMP` and for elaborating medium designs). |
 | `LVDSIM_NVC_DLLDIR` | directory with the DLLs nvc needs, put in front of `PATH` (MSYS2: `C:/msys64/mingw64/bin`). Default for a packaged nvc: `nvc/bin`. |
 | `LVDSIM_TCL_DIR` | directory containing `lvdcompat.tcl`. Default: next to the tool, then the source tree. |
 | `LVDSIM_STD` | default VHDL standard `93`, `02`, `08` or `19`. Default `08`. |
@@ -158,11 +158,11 @@ These have no counterpart in the classic command set; they work on a project fil
 | `force` with a time list, `-repeat`, `-cancel` | wrapped | the first value is applied now, with a warning |
 | `force` without arguments | native | lists forced signals |
 | `noforce sig` | native | |
-| `examine [-radix r \| -hex ...] sig...`, `exa` | native | |
+| `examine [-radix r \| -hex ...] sig...`, `exa` | wrapped | radix `binary`, `octal`, `hexadecimal`, `unsigned`, `decimal` (also `-hex`, `-hexadecimal`, `-unsigned` ...) applies to vectors (`AD`, `173`, `-83`; a hexadecimal or octal digit with metavalues shows the metavalue, or `X` when they are mixed); integers in hexadecimal keep the native `0x..`; a VHDL name not found as written is looked up in lower case (`/dut/REG_DATA`); `-json` is the native command unchanged |
 | `find signals [-r] pattern`, `describe`, `echo` | native | `describe -location` (fork, kernel PR 10) adds the source location of declarations, units and instantiations (protocol.md, "Source locations") |
 | `quit [-f] [-force] [-sim] [-code n]` | wrapped | `exit -code n` |
-| `do file` | wrapped | `source`, with `argv` set |
-| `quietly cmd` | wrapped | |
+| `do file` | wrapped | runs the script one command at a time (also commands separated by `;`) and prints each non-empty result like the prompt (`examine /x` shows the value); errors name the file and line; `argv` is set. `vsim -do` (batch and GUI) runs the user's script this way |
+| `quietly cmd` | wrapped | runs the command without printing its result |
 | `add wave [-r] [-radix r] [-color c] [-label l] [-group g] [-divider t] [-format analog] [-min x] [-max y] pattern...` | wrapped | in the GUI it fills the wave window (patterns like `/dut/*`, `/tb/dut/clk`; a vector named `count[7:0]` matches `count`); no effect in batch mode; lvdsim extensions: `-group a/b` nests (one level per `/`), `-group g` alone declares an empty group, `-collapse`, `-bits`, `-vbus`, see display-format.md; `-min`/`-max` need both limits with min < max (else the range stays automatic), the same range is edited by the wave window's "Analog Settings..." dialog; `-height P` is the row height in pixels of any row kind (12 to 800; analog rows: a multiple of 22 is kept as lines), also set with the wave window's "Height..." entry, by dragging a row's bottom border or Alt+Up/Down; `-vbus NAME -format analog*` draws the virtual bus as an analog trace; `-expr {EXPR}` adds an expression row (`-label` names it; see expressions.md), patterns may name a dataset (`ref:/tb/*`), `-compare [-tolerance T] REF TEST` adds compare rows for the signal pairs |
 | `delete wave *` | wrapped | GUI: removes all rows; batch: no effect |
 | `add list [-r] [-radix r] [-label l] pattern...` | wrapped | in the GUI it adds columns to the List dock (same patterns as `add wave`; rows on any change, on a trigger signal or at a strobe interval are chosen in the dock); no effect in batch mode; lvdsim extensions: `-expr {EXPR}` adds an expression column, dataset patterns `ref:/tb/*` |

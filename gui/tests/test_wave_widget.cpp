@@ -485,8 +485,10 @@ private slots:
         w->setActiveCursor(0);
         QCOMPARE(QString::fromStdString(w->rowValueText(1)), QString("00"));
 
-        const int mid = w->addCursor();  // default: middle of the view
-        QVERIFY(qAbs(*w->cursorTime(mid) - w->view().timeAt(w->view().widthPx / 2.0)) < 1.0);
+        const int on = w->addCursor();  // default: exactly on the active cursor (cursor 0, at 100)
+        QCOMPARE(on, 2);
+        QCOMPARE(*w->cursorTime(on), 100.0);
+        QCOMPARE(w->activeCursor(), 2);
 
         w->removeCursor(1);
         QCOMPARE(w->cursorCount(), 2);
@@ -495,6 +497,77 @@ private slots:
         QCOMPARE(w->cursorCount(), 0);
         w->removeCursor(0);  // harmless
         QVERIFY(!w->cursorTime(0).has_value());
+    }
+
+    void addCursorWithoutCursorsUsesMiddleOfView() {
+        auto w = make();
+        w->setView(0.0, 1.0);
+        const int c = w->addCursor();
+        QCOMPARE(c, 0);
+        QVERIFY(qAbs(*w->cursorTime(c) - w->view().timeAt(w->view().widthPx / 2.0)) < 1.0);
+    }
+
+    void newCursorOnTheActiveOneIsTheOneDragged() {
+        auto w = make();
+        w->setView(0.0, 1.0);
+        w->setCursorTime(0, 123.0);
+        QCOMPARE(w->addCursor(), 1);
+        QCOMPARE(*w->cursorTime(1), 123.0);  // on top of the yellow cursor, not somewhere in the view
+        // Both are under the pointer: the drag takes the new (active) one and leaves cursor 1 where it was.
+        QTest::mousePress(w.get(), Qt::LeftButton, Qt::NoModifier, waveClickPoint(*w, 123, 3));
+        QTest::mouseMove(w.get(), waveClickPoint(*w, 400, 3));
+        QTest::mouseRelease(w.get(), Qt::LeftButton, Qt::NoModifier, waveClickPoint(*w, 400, 3));
+        QCOMPARE(*w->cursorTime(0), 123.0);
+        QVERIFY(qAbs(*w->cursorTime(1) - 400.0) <= 1.0);
+    }
+
+    // ---- cursor magnet: snaps to the transitions of the selected rows ---------------------------
+    void clickSnapsToEdgeOfTheClickedRow() {
+        auto w = make();
+        w->setView(0.0, 1.0);  // one time unit per pixel; clk changes every 50
+        QTest::mouseClick(w.get(), Qt::LeftButton, Qt::NoModifier, waveClickPoint(*w, 104, 0));
+        QCOMPARE(*w->cursorTime(0), 100.0);
+        QTest::mouseClick(w.get(), Qt::LeftButton, Qt::NoModifier, waveClickPoint(*w, 144, 0));
+        QCOMPARE(*w->cursorTime(0), 150.0);
+        QTest::mouseClick(w.get(), Qt::LeftButton, Qt::NoModifier, waveClickPoint(*w, 125, 0));
+        QVERIFY(qAbs(*w->cursorTime(0) - 125.0) <= 1.0);  // farther than kSnapPixels from both edges
+        // cnt changes at 0, 300 and 700 only: near 300 it snaps, near 250 (a clk edge) it does not.
+        QTest::mouseClick(w.get(), Qt::LeftButton, Qt::NoModifier, waveClickPoint(*w, 295, 1));
+        QCOMPARE(*w->cursorTime(0), 300.0);
+        QTest::mouseClick(w.get(), Qt::LeftButton, Qt::NoModifier, waveClickPoint(*w, 253, 1));
+        QVERIFY(qAbs(*w->cursorTime(0) - 253.0) <= 1.0);
+    }
+
+    void snapDistanceIsInPixels() {
+        auto w = make();
+        w->setView(0.0, 10.0);  // 10 time units per pixel: 8 px are 80 units
+        QTest::mouseClick(w.get(), Qt::LeftButton, Qt::NoModifier, waveClickPoint(*w, 13, 0));  // t = 130
+        QCOMPARE(*w->cursorTime(0), 150.0);
+    }
+
+    void noSnapWithoutSelectedRow() {
+        auto w = make();
+        w->setView(0.0, 1.0);
+        QCOMPARE(w->selectedCount(), 0);
+        // shift-click: no selection, so no snap
+        QTest::mouseClick(w.get(), Qt::LeftButton, Qt::ShiftModifier, waveClickPoint(*w, 104, 0));
+        QVERIFY(qAbs(*w->cursorTime(0) - 104.0) <= 1.0);
+        w->selectRow(0);
+        QTest::mouseClick(w.get(), Qt::LeftButton, Qt::ShiftModifier, waveClickPoint(*w, 196, 2));
+        QCOMPARE(*w->cursorTime(1), 200.0);  // shift-click snaps to the selected clk row
+    }
+
+    void dragSnapsToEdges() {
+        auto w = make();
+        w->setView(0.0, 1.0);
+        QTest::mousePress(w.get(), Qt::LeftButton, Qt::NoModifier, waveClickPoint(*w, 200, 0));
+        QCOMPARE(*w->cursorTime(0), 200.0);
+        QTest::mouseMove(w.get(), waveClickPoint(*w, 246, 0));
+        QCOMPARE(*w->cursorTime(0), 250.0);
+        QTest::mouseMove(w.get(), waveClickPoint(*w, 275, 0));
+        QVERIFY(qAbs(*w->cursorTime(0) - 275.0) <= 1.0);
+        QTest::mouseRelease(w.get(), Qt::LeftButton, Qt::NoModifier, waveClickPoint(*w, 297, 0));
+        QVERIFY(qAbs(*w->cursorTime(0) - 275.0) <= 1.0);  // the release itself does not move it
     }
 
     void cursorLimit() {
@@ -639,6 +712,44 @@ private slots:
         QCOMPARE(w->rowCount(), 7);
         const QImage img = w->grab().toImage();
         QVERIFY(!img.isNull());
+    }
+
+    // A divider is a band across the name, value and wave columns with a line on top, so that the groups
+    // stand out (it was a thin line through the wave area only). Both renderers draw the same.
+    void dividerIsABandAcrossTheRow() {
+        auto w = make();
+        w->selectRow(0);
+        w->insertDivider("alu");
+        w->clearSelection();
+        const int row = 1;
+        QCOMPARE(QString::fromStdString(w->rowName(row)), QString("alu"));
+        const Palette defaults;
+        const QImage img = w->grab().toImage();
+        const int top = w->rowTop(row);
+        const int mid = top + w->rowHeight() / 2;
+        auto colourAt = [&](int x, int y) { return img.pixelColor(x, y).rgb(); };
+        // Name column right of the text, value column, wave area: all the band colour.
+        for (int x : {150, w->waveLeft() - 60, w->waveLeft() + 20, w->waveLeft() + 400})
+            QVERIFY2(colourAt(x, mid) == defaults.divider.rgb(),
+                     qPrintable(QString("x %1: %2").arg(x).arg(img.pixelColor(x, mid).name())));
+        QCOMPARE(colourAt(w->waveLeft() + 400, top), defaults.dense.rgb());
+        // The signal row next to it keeps the plain background.
+        QVERIFY(colourAt(w->waveLeft() - 60, w->rowTop(row + 1) + 3) != defaults.divider.rgb());
+
+        // The GPU frame has the band and the top line over the whole width of the wave area.
+        const QSize size(600, 200);
+        const GpuFrame f = w->buildGpuFrame(size);
+        const int canvasTop = top - w->rowsTop();
+        bool band = false, line = false;
+        for (const auto& r : f.rects) {
+            if (r.y == canvasTop && r.h == w->rowHeight() && r.w == size.width() &&
+                r.color.r == defaults.divider.red() && r.color.g == defaults.divider.green())
+                band = true;
+            if (r.y == canvasTop && r.h == 1 && r.color.r == defaults.dense.red())
+                line = true;
+        }
+        QVERIFY(band);
+        QVERIFY(line);
     }
 
 };

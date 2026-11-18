@@ -654,6 +654,7 @@ bool SimWindow::startSimulation(const QStringList& vsimArgs) {
     if (!env_.nvcDllDir.empty())
         cfg.pathPrepend << QString::fromStdString(env_.nvcDllDir);
     cfg.startupScripts = toQt(plan.startupScripts);
+    cfg.startupDo = QString::fromStdString(plan.startupDo);
     // The line breakpoints of this design are in force before the startup script runs (it may run).
     loadLineBreakpoints(vsimArgs);
     lineBps_.resetKernelState();
@@ -2421,7 +2422,7 @@ bool SimWindow::applyWaveOp(const QString& op) {
                    : fail(tr("wave op: %1").arg(d->statusLabel()->text()));
     }
     if (cmd == "zoom" &&
-        a.size() >= 2) { // zoom in by a factor (> 1) or out (< 1) around the middle of the view
+        a.size() >= 2) { // zoom in by a factor (> 1) or out (< 1) around the active cursor or the middle
         const double f = a[1].toDouble();
         if (!(f > 0.0))
             return fail(tr("wave op: zoom takes a positive factor"));

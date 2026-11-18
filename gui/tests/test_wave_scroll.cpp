@@ -467,6 +467,47 @@ private slots:
         }
     }
 
+    // Zoom (toolbar, menu, +/-, `wave zoom`) keeps the active cursor where it is on the screen when it is in
+    // view, so zooming in on a cursor at 0 fs keeps 0 fs at the left edge; without a visible cursor the
+    // centre stays.
+    void zoomKeepsTheActiveCursorInPlace() {
+        Fixture f;
+        f->show();
+        QVERIFY(QTest::qWaitForWindowExposed(f.w.get()));
+        f->zoomFull();
+        f->setCursorTime(f->cursorCount(), 0.0);
+        f->setActiveCursor(f->cursorCount() - 1);
+        for (int i = 0; i < 6; ++i) {
+            f->zoomBy(1.5);
+            QCOMPARE(f->view().startTime, 0.0);
+        }
+        // Ctrl+wheel too, wherever the pointer is: the cursor wins over the pointer while it is in view.
+        for (int i = 0; i < 3; ++i) {
+            wheel(*f.w, QPoint(0, 120), Qt::ControlModifier,
+                  QPoint(f->waveLeft() + f->waveWidth() * 3 / 4, f->rowsTop() + 10));
+            QCOMPARE(f->view().startTime, 0.0);
+        }
+
+        f->zoomFull();
+        f->setCursorTime(f->activeCursor(), 300.0);
+        const double xBefore = (300.0 - f->view().startTime) / f->view().timePerPixel;
+        for (double factor : {2.0, 3.0, 1.0 / 1.5}) {
+            f->zoomBy(factor);
+            const double x = (300.0 - f->view().startTime) / f->view().timePerPixel;
+            QVERIFY2(qAbs(x - xBefore) < 1e-6,
+                     qPrintable(QString("cursor moved from x %1 to %2").arg(xBefore).arg(x)));
+        }
+
+        // The cursor out of view: the centre of the wave area stays.
+        f->zoomFull();
+        f->zoomBy(4.0); // around the cursor at 300: the view now ends before 900
+        f->setCursorTime(f->activeCursor(), 900.0);
+        QVERIFY(f->view().endTime() < 900.0);
+        const double centre = f->view().timeAt(f->view().widthPx / 2.0);
+        f->zoomBy(2.0);
+        QVERIFY(qAbs(f->view().timeAt(f->view().widthPx / 2.0) - centre) < 1e-6);
+    }
+
     void zoomKeepsFollowAndPinsTheEnd() {
         Fixture f;
         f->show();

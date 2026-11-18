@@ -1,7 +1,8 @@
 # Building lvdsim on Linux
 
 This page builds the NVC fork and lvdsim from source on Linux, runs the tests and the examples, and makes the self-contained bundle and
-the `.run` installer. It was written and verified on **Debian 13 (trixie) in WSL** (GCC 14, Qt 6.8.2, LLVM 19, glibc 2.41, x86_64).
+the `.run` installer. It was written and verified on **Debian 13 (trixie) in WSL** (GCC 14, Qt 6.8.2, LLVM 19, glibc 2.41, x86_64)
+and followed again on a **native Debian 13 desktop** (XFCE, X11, same versions) on 2026-11-17, see the notes in sections 2 and 4.
 Other distributions should work with the equivalent packages but were not tried.
 
 If you only want to use lvdsim, install the `.run` file instead ([README.md](../README.md#install-on-linux)).
@@ -38,11 +39,12 @@ fork `https://github.com/giorgiodelmondo/nvc.git` (upstream NVC `4e41ba459` plus
 patched: clone the branch and build it. **Use that branch**: an older kernel crashes or hangs when the Tcl shell quits (the shell `exit`
 fix is on the branch) and truncates Verilog time units.
 
-Do not build inside the checkout if it lives on a Windows drive (`/mnt/d`). Clone the branch into the Linux file system (from the
-repository root; the clone of `kernel/nvc` is local, no network is needed, or use the URL of the fork):
+Do not build inside the checkout if it lives on a Windows drive (`/mnt/d`). Clone the branch into the Linux file system. A checkout
+that has `kernel/nvc` (the development setup of `kernel/PATCHES.md`) can be cloned locally, without network; a plain clone of the
+lvdsim repository has neither `kernel/nvc` nor `kernel/build/fetch-nvc.sh` (only `kernel/PATCHES.md`), so clone the fork:
 
 ```sh
-git clone -b lvdsim /path/to/lvdsim/kernel/nvc ~/build/nvc-src      # or: kernel/build/fetch-nvc.sh --dest ~/build/nvc-src
+git clone -b lvdsim https://github.com/giorgiodelmondo/nvc.git ~/build/nvc-src   # or, with kernel/nvc: git clone -b lvdsim /path/to/lvdsim/kernel/nvc ~/build/nvc-src
 cd ~/build/nvc-src
 ./autogen.sh
 mkdir -p ~/build/nvc-linux && cd ~/build/nvc-linux
@@ -59,6 +61,8 @@ Test results of the fork on Linux (all 1525 regression entries pass, unit tests 
 
 In this repository's own verification (2026-11-08) the nvc build was `~/build/nvc-fork-linux-s1` (source clone `~/build/nvc-fork-src-s1`,
 commit `754af76cc`, built exactly as above; the merge `53d41eeae` was checked the same way in `~/build/nvc-fork-linux-s2`). Replace `~/build/nvc-linux` by that name if you reuse it.
+The native Debian 13 run of 2026-11-17 built the branch at `cba6b4e3c` (`nvc 1.24-devel (cba6b4e3c)`) in `~/build/nvc-linux` with the
+commands above, cloned from the GitHub fork; `make check` was not run.
 
 ## 3. Build lvdsim
 
@@ -87,7 +91,8 @@ ctest --preset linux-release
 (With `-B <dir>`: `ctest --test-dir <dir> --output-on-failure`.) `QT_QPA_PLATFORM=offscreen` lets the Qt tests run without a display.
 Without the two `LVDSIM_NVC*` variables the integration tests report "skipped" instead of running. Expected: all tests pass
 (142 of 142 in this verification, release build with `-B`, Debian 13; `test_gpu_renderer` skips its own cases, headless GPU rendering is only set
-up for Direct3D 11 and Metal, which counts as passed).
+up for Direct3D 11 and Metal, which counts as passed). The native Debian 13 run of 2026-11-17 (preset `linux-release`, no `-B`, kernel
+`cba6b4e3c`) passed 334 of 334; the suite has grown since the first count.
 
 ## 5. Run the examples
 
@@ -144,6 +149,8 @@ QT_QPA_PLATFORM=wayland lvdsim-gui -do sim.do work.tb_mixed
 `xcb` may need `libxcb-cursor0` (install it if Qt reports that the xcb plugin could not be loaded). In WSL there is no usable GPU
 rendering path in the way lvdsim uses it, so the status bar shows `Renderer: QPainter (GPU not available: ...)`. The GPU renderer is
 untested on Linux: it is the default, falls back to QPainter by itself, and `LVDSIM_RENDERER=cpu` forces QPainter (section 8).
+On the native Debian 13 XFCE desktop (X11) of 2026-11-17 it was used (`Renderer: GPU`) and drew the same pictures as QPainter in
+side-by-side screenshots; no automated GPU test runs there.
 
 ## 8. Troubleshooting
 

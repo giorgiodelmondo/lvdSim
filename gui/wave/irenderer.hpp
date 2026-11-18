@@ -25,6 +25,7 @@ struct Palette {
     QColor cursor{0xff, 0xe0, 0x40};
     QColor cursor2{0xff, 0x80, 0xff};
     QColor selection{0x30, 0x50, 0x90};
+    QColor divider{0x3a, 0x3a, 0x1c}; ///< band behind a divider row; its text and top line use `dense`
 };
 
 /// Per row drawing options that influence tile contents.

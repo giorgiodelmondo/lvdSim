@@ -121,3 +121,38 @@ TEST_CASE("LVDSIM_NVC_OPTS adds global nvc options") {
     unsetenv("LVDSIM_NVC_OPTS");
 #endif
 }
+
+TEST_CASE("nvc gets a larger unit heap unless LVDSIM_NVC_OPTS sets one") {
+    const auto heaps = [] {
+        const auto env = lvd::tools::discoverEnvironment();
+        const auto& g = env.ctx.nvcGlobalArgs;
+        std::vector<std::string> v;
+        for (std::size_t i = 0; i < g.size(); ++i)
+            if (g[i].rfind("-M", 0) == 0)
+                v.push_back(g[i] == "-M" && i + 1 < g.size() ? g[i + 1] : g[i]);
+        return v;
+    };
+#ifdef _WIN32
+    _putenv_s("LVDSIM_NVC_OPTS", "");
+#else
+    unsetenv("LVDSIM_NVC_OPTS");
+#endif
+    REQUIRE(heaps() == std::vector<std::string>{lvd::tools::kDefaultNvcUnitHeap});
+#ifdef _WIN32
+    _putenv_s("LVDSIM_NVC_OPTS", "--relaxed -M 32m");
+#else
+    setenv("LVDSIM_NVC_OPTS", "--relaxed -M 32m", 1);
+#endif
+    REQUIRE(heaps() == std::vector<std::string>{"32m"});
+#ifdef _WIN32
+    _putenv_s("LVDSIM_NVC_OPTS", "-M512m");
+#else
+    setenv("LVDSIM_NVC_OPTS", "-M512m", 1);
+#endif
+    REQUIRE(heaps() == std::vector<std::string>{"-M512m"});
+#ifdef _WIN32
+    _putenv_s("LVDSIM_NVC_OPTS", "");
+#else
+    unsetenv("LVDSIM_NVC_OPTS");
+#endif
+}

@@ -34,6 +34,10 @@ struct BundledNvc {
 };
 std::optional<BundledNvc> findBundledNvc(const std::string& programDir);
 
+/// nvc unit heap (-M) used when LVDSIM_NVC_OPTS does not give one. nvc's own default, 16 MB, is too small for
+/// Xilinx unisim_VCOMP and for elaborating medium designs ("memory exhausted while creating unit").
+inline constexpr const char* kDefaultNvcUnitHeap = "128m";
+
 Environment discoverEnvironment();
 
 /// Value of an environment variable, empty if unset.

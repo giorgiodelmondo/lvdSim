@@ -132,7 +132,8 @@ WaveToolBar::WaveToolBar(WaveWidget* wave, QWidget* parent)
 
     addSeparator();
     connect(add("addCursor", tr("Add cursor"),
-                tr("Add a cursor (shift-click also adds one). The time between cursors is shown."),
+                tr("Add a cursor on the active cursor, then drag it (shift-click adds one at the pointer). "
+                   "The time between cursors is shown."),
                 makeIcon(Icon::AddCursor)),
             &QAction::triggered, this, [this] { wave_->addCursor(); });
     connect(add("removeCursor", tr("Remove cursor"), tr("Remove the active cursor"),

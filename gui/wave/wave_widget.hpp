@@ -76,9 +76,9 @@ struct EventGroup {
 /// time difference.
 ///
 /// Keys: Left/Right (and Tab/Shift+Tab) jump the active cursor to the previous/next edge of the selected rows
-/// (all rows if none is selected), Ctrl+F finds a value, F3/Shift+F3 repeat the search, ctrl+wheel zooms
-/// around the pointer, middle drag pans, F fits the trace, +/- zoom, Delete removes the selection, Ctrl+B
-/// makes a virtual bus.
+/// (all rows if none is selected), Ctrl+F finds a value, F3/Shift+F3 repeat the search, ctrl+wheel and +/-
+/// zoom around the active cursor when it is in view (else around the pointer / the centre), middle drag pans,
+/// F fits the trace, Delete removes the selection, Ctrl+B makes a virtual bus.
 ///
 /// Arranging rows (see docs/display-format.md): Ctrl+Up / Ctrl+Down move the selected rows among their
 /// siblings, Ctrl+Shift+Up / Down to the top or bottom of their group, Ctrl+G wraps the selection in a new
@@ -91,6 +91,8 @@ class WaveWidget : public QWidget {
     Q_OBJECT
 public:
     static constexpr int kMaxCursors = 8;
+    /// A cursor placed or dragged with the mouse jumps to a transition of a selected row this close (pixels).
+    static constexpr int kSnapPixels = 8;
 
     explicit WaveWidget(QWidget* parent = nullptr);
     ~WaveWidget() override;
@@ -108,7 +110,8 @@ public:
     const ViewState& view() const noexcept { return view_; }
     void setView(double startTime, double timePerPixel);
     void zoomFull();            ///< fits the whole run; a manual action, so it turns Follow off
-    void zoomBy(double factor); ///< >1 zooms in around the centre of the wave area (the end while following)
+    void zoomBy(double factor); ///< >1 zooms in around the active cursor if it is in view, else the centre
+                                ///< of the wave area (the end while following)
 
     // ---- Scroll bars -------------------------------------------------------------------------------
     /// Horizontal bar (time): its range is the whole run known to the store, [start, end], in kHBarSteps
@@ -237,8 +240,8 @@ public:
     void setCursorTime(int which, std::optional<double> t);
     int activeCursor() const noexcept { return activeCursor_; }
     void setActiveCursor(int which);
-    /// Adds a cursor (at the middle of the view by default), makes it active and returns its index, or -1
-    /// when the maximum is reached.
+    /// Adds a cursor, makes it active and returns its index, or -1 when the maximum is reached. Without a
+    /// time it goes exactly on the active cursor (the middle of the view when there is no cursor yet).
     int addCursor(std::optional<double> t = std::nullopt);
     void removeCursor(int which);
 
@@ -298,6 +301,9 @@ public:
     FindResult findAgain(int dir);
     /// The rows a search looks at: the selected rows that show data (never all rows).
     std::vector<int> searchRows() const;
+    /// The transition of a selected row nearest to t if it is at most kSnapPixels away on screen, else t.
+    /// Used for cursors placed and dragged with the mouse ("magnet").
+    double snapToEdge(double t) const;
     lvd::wave::Radix rowRadix(int row) const; ///< the radix a value is written in for this row
     bool rowIsNumeric(int row) const;         ///< threshold crossings work on this row
     /// Opens (or raises) the non-modal "Find Value" dialog; it belongs to this widget.
@@ -659,6 +665,8 @@ private:
     int cursorNear(int x) const;
     void ensureVisible(double t);
     std::optional<double> activeCursorTime() const;
+    /// x in the wave area that a zoom keeps in place: the active cursor when it is in view, else fallbackX.
+    double zoomAnchorX(double fallbackX) const;
     QString timeText(double t) const;
 
     std::shared_ptr<const lvd::wave::WaveStore> store_;

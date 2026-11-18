@@ -329,10 +329,19 @@ void WaveWidget::zoomFull() {
     fitAll();
 }
 
+double WaveWidget::zoomAnchorX(double fallbackX) const {
+    // The active cursor (the yellow one while there is only one) stays where it is on screen when it is in
+    // view: zooming in on a cursor at 0 fs must not drift away from it.
+    const std::optional<double> cursor = activeCursorTime();
+    if (cursor && *cursor >= view_.startTime && *cursor <= view_.endTime())
+        return (*cursor - view_.startTime) / view_.timePerPixel;
+    return fallbackX;
+}
+
 void WaveWidget::zoomBy(double factor) {
     autoFit_ = false;
     view_.widthPx = waveWidth();
-    view_.zoomAt(view_.widthPx / 2.0, factor);
+    view_.zoomAt(zoomAnchorX(view_.widthPx / 2.0), factor);
     clampView();
     if (follow_)
         pinToEnd();
@@ -428,7 +437,8 @@ int WaveWidget::addCursor(std::optional<double> t) {
     if (cursorCount() >= kMaxCursors)
         return -1;
     view_.widthPx = waveWidth();
-    const double at = t ? *t : view_.timeAt(view_.widthPx / 2.0);
+    const std::optional<double> active = activeCursorTime();
+    const double at = t ? *t : active ? *active : view_.timeAt(view_.widthPx / 2.0);
     setCursorTime(cursorCount(), at);
     return activeCursor_;
 }
@@ -449,7 +459,8 @@ int WaveWidget::cursorNear(int x) const {
     for (int i = 0; i < cursorCount(); ++i) {
         const double px = waveLeft() + view_.xAt(cursors_[static_cast<std::size_t>(i)]);
         const double d = std::fabs(px - x);
-        if (d < bestDist) {
+        // Cursors on the same spot (a new one goes on the active one): the active cursor is the one taken.
+        if (d < bestDist || (d == bestDist && best >= 0 && i == activeCursor_)) {
             bestDist = d;
             best = i;
         }
@@ -1445,6 +1456,12 @@ void WaveWidget::drawRow(QPainter& p, int rowIndex, int top) {
 
     if (isSelected(row))
         p.fillRect(QRect(0, top, right, row.h), palette_.selection);
+    else if (it.kind == ItemKind::Divider) // a band across all columns, so that the groups stand out
+        p.fillRect(QRect(0, top, right, row.h), palette_.divider);
+    if (it.kind == ItemKind::Divider) {
+        p.setPen(palette_.dense);
+        p.drawLine(0, top, right, top);
+    }
     p.setPen(QColor(0x28, 0x28, 0x28));
     p.drawLine(0, top + row.h - 1, right, top + row.h - 1);
 
@@ -1479,8 +1496,12 @@ void WaveWidget::drawRow(QPainter& p, int rowIndex, int top) {
     if (missing)
         nameColor = palette_.unknown;
     p.setPen(nameColor);
-    const QString name =
-        fm.elidedText(QString::fromStdString(nameOf(row)), Qt::ElideLeft, nameWidth_ - x - 6);
+    QFont nameFont = rowFontNow;
+    if (it.kind == ItemKind::Divider)
+        nameFont.setBold(true);
+    p.setFont(nameFont);
+    const QString name = QFontMetrics(nameFont).elidedText(QString::fromStdString(nameOf(row)), Qt::ElideLeft,
+                                                           nameWidth_ - x - 6);
     p.drawText(QRect(x, top, nameWidth_ - x - 4, band), Qt::AlignVCenter | Qt::AlignLeft, name);
     p.restore();
 
@@ -1509,9 +1530,7 @@ void WaveWidget::drawRow(QPainter& p, int rowIndex, int top) {
         p.restore();
         return; // drawn by the GPU canvas, labels by the overlay
     }
-    if (it.kind == ItemKind::Divider) {
-        p.setPen(palette_.dense);
-        p.drawLine(waveLeft(), top + row.h / 2, right, top + row.h / 2);
+    if (it.kind == ItemKind::Divider) { // the band and its top line are already drawn across the row
         p.restore();
         return;
     }
@@ -1634,7 +1653,12 @@ void WaveWidget::mousePressEvent(QMouseEvent* e) {
             showTimeFs(events_[g->first].timeFs);
             return;
         }
-        const double t = view_.timeAt(pos.x() - waveLeft());
+        // Select first: the cursor snaps to the edges of the selected rows, so a click near an edge of a
+        // signal puts the cursor exactly on it.
+        const int row = rowAtY(pos.y());
+        if (row >= 0 && pos.y() >= kRowsTop && !shift)
+            selectRow(row, ctrl);
+        const double t = snapToEdge(view_.timeAt(pos.x() - waveLeft()));
         const int near = cursorNear(pos.x());
         if (near >= 0 && !shift) {
             setActiveCursor(near);
@@ -1650,9 +1674,6 @@ void WaveWidget::mousePressEvent(QMouseEvent* e) {
             dragCursor_ = activeCursor_;
         }
         drag_ = Drag::Cursor;
-        const int row = rowAtY(pos.y());
-        if (row >= 0 && pos.y() >= kRowsTop && !shift)
-            selectRow(row, ctrl);
         return;
     }
 
@@ -1689,7 +1710,7 @@ void WaveWidget::mouseMoveEvent(QMouseEvent* e) {
     const QPoint pos = e->position().toPoint();
     switch (drag_) {
     case Drag::Cursor:
-        setCursorTime(dragCursor_, view_.timeAt(pos.x() - waveLeft()));
+        setCursorTime(dragCursor_, snapToEdge(view_.timeAt(pos.x() - waveLeft())));
         break;
     case Drag::Pan:
         viewPannedByUser();
@@ -1790,8 +1811,9 @@ void WaveWidget::wheelEvent(QWheelEvent* e) {
         autoFit_ = false;
         const double factor = std::pow(1.25, dy / 120.0);
         view_.widthPx = waveWidth();
-        view_.zoomAt(std::clamp(e->position().x() - waveLeft(), 0.0, static_cast<double>(view_.widthPx)),
-                     factor);
+        view_.zoomAt(zoomAnchorX(std::clamp(e->position().x() - waveLeft(), 0.0,
+                                            static_cast<double>(view_.widthPx))),
+                     factor); // around the active cursor when it is in view, else around the pointer
         clampView();
         if (follow_)
             pinToEnd(); // following: the end stays at the right edge, not the point under the pointer
@@ -2161,14 +2183,15 @@ GpuFrame WaveWidget::buildGpuFrame(const QSize& size) {
         if (top + row.h < 0 || top > H)
             continue;
 
-        if (isSelected(row))
+        const bool divider = row.item->kind == ItemKind::Divider;
+        if (isSelected(row) || divider)
             f.rects.push_back({0, static_cast<float>(top), static_cast<float>(W), static_cast<float>(row.h),
-                               Rgba::from(palette_.selection)});
+                               Rgba::from(isSelected(row) ? palette_.selection : palette_.divider)});
         f.rects.push_back(
             {0, static_cast<float>(top + row.h - 1), static_cast<float>(W), 1, Rgba{0x28, 0x28, 0x28, 255}});
-        if (row.item->kind == ItemKind::Divider) {
-            f.rects.push_back({0, static_cast<float>(top + row.h / 2), static_cast<float>(W), 1,
-                               Rgba::from(palette_.dense)});
+        if (divider) { // the same band and top line as drawRow() draws with QPainter
+            f.rects.push_back(
+                {0, static_cast<float>(top), static_cast<float>(W), 1, Rgba::from(palette_.dense)});
             continue;
         }
         if (!row.source)
